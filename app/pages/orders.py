@@ -17,7 +17,7 @@ def render() -> None:
     df = get_orders()                         # raw cols exactly as the API sends
 
     if df.empty:
-        st.info("No orders returned.")
+        st.info("No orders found.")
         return
 
     # ── 2 · Data-massage ----------------------------------------------------

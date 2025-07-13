@@ -8,6 +8,10 @@ from app.services.api import get_balance
 def render():
     data = get_balance()
 
+    if data["assets_df"].empty:
+        st.info("No equity or assets found.")
+        return
+
     # ── 1. Equity metric ────────────────────────────────────────────────────
     equity_str = f"{data['equity']:,.2f} {data['quote_asset']}"
     st.metric("Total equity", equity_str)

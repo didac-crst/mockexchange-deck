@@ -16,8 +16,8 @@ def _prices_for(assets: list[str]) -> dict[str, float]:
     Works with mock-exchange `/tickers/BTC/USDT,ETH/USDT`
     and with list-style payloads from a future /ticker/price alias.
     """
-    pairs = [f"{a}/{QUOTE}" for a in assets]           # e.g. BTC/USDT
-    res   = _get(f"/tickers/{','.join(pairs)}")        # dict OR list
+    pairs = [f"{a}/{QUOTE}" for a in assets if a != QUOTE]           # e.g. BTC/USDT
+    res   = _get(f"/tickers/{','.join(pairs)}")                     # dict OR list
 
     def _extract_price(d: dict) -> float | None:
         """pull price from whatever key the exchange uses."""
@@ -73,9 +73,20 @@ def _extract_assets(raw):
 
     raise ValueError("Unrecognised `/balance` payload shape")
 
-def get_balance():
+def get_balance() -> dict:
+    """Fetch `/balance` endpoint and return a dict with:
+    - equity: total value in quote asset
+    - quote_asset: the quote asset symbol (e.g. USDT)
+    - assets_df: DataFrame with asset balances, prices, and values.
+    """
     snap = _get("/balance")
-
+    if len(snap) == 0:
+        return {
+            "equity": 0.0,
+            "quote_asset": settings()["QUOTE_ASSET"],
+            "assets_df": pd.DataFrame(),
+        }
+    
     assets_df = pd.DataFrame(_extract_assets(snap))
 
     # Ensure essential columns exist -----------------------------------------
