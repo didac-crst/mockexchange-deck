@@ -6,8 +6,8 @@ from . import orders, portfolio
 Page = Callable[[], None]
 
 registry: dict[str, Page] = {
-    "Portfolio": portfolio.render,
-    "Orders": orders.render,
+    "portfolio": portfolio.render,
+    "orders": orders.render,
 }
 
 __all__ = ["registry"]
