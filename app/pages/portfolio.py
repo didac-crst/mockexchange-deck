@@ -1,6 +1,7 @@
 import pandas as pd
 import streamlit as st
 import plotly.express as px
+import streamlit as st
 from app.services.api import get_balance
 
 
@@ -11,53 +12,54 @@ def render():
     equity_str = f"{data['equity']:,.2f} {data['quote_asset']}"
     st.metric("Total equity", equity_str)
 
-    # ── 2. Prep DataFrame with formatting ────────────────────────────────────
+    # ── 2 · Build tidy numeric DataFrame ──────────────────────────────────────
     df = data["assets_df"].copy()
     df["value"] = df["total"] * df["quote_price"]
+
+    # share of portfolio as a pure number (0-1); keep it numeric for easy maths
+    df["share"] = df["value"] / df["value"].sum()
     df = df.sort_values("value", ascending=False)
-    df["cum%"] = df["value"].cumsum() / df["value"].sum()
 
-    # # add “Total” row
-    # total_row = pd.DataFrame(
-    #     {
-    #         "asset": ["Total"],
-    #         "total": [df["total"].sum()],
-    #         "quote_price": [pd.NA],
-    #         "value": [df["value"].sum()],
-    #         "cum%": [pd.NA],
-    #     }
-    # )
-    # df_disp = pd.concat([df, total_row], ignore_index=True)
+    # ── 3 · Pie chart with “Other” bucket -------------------------------------
+    lim_min_share = 0.05          # 5 %
+    if len(df) <= 10:
+        major = df
+        other = 0
+    else:
+        major = df[df["share"] >= lim_min_share]
+        other = df.loc[df["share"] < lim_min_share, "value"].sum()
 
-    # ---------- a) number formatting ----------------------------------------
-    df_fmt = df.copy()
-    df_fmt["free"]       = df_fmt["free"].apply(lambda x: f"{x:,}" if pd.notna(x) else "")
-    df_fmt["used"]       = df_fmt["used"].apply(lambda x: f"{x:,}" if pd.notna(x) else "")
-    df_fmt["total"]       = df_fmt["total"].apply(lambda x: f"{x:,}" if pd.notna(x) else "")
-    df_fmt["quote_price"] = df_fmt["quote_price"].apply(lambda x: f"{x:,.6f}" if pd.notna(x) else "")
-    df_fmt["value"]       = df_fmt["value"].apply(lambda x: f"{x:,.2f}" if pd.notna(x) else "")
-
-    # ---------- b) turn cum% into pretty text, then rename once --------------
-    df_fmt["cum%"] = (
-        df["cum%"].mul(100)
-                    .round(2)
-                    .astype(str)
-                    .str.rstrip("0")
-                    .str.rstrip(".")
-                    .add("%")
-                    .where(df["cum%"].notna(), "")   # blank for NaNs
-    )
-    df_fmt = df_fmt.rename(columns={"cum%": "cum"})
-
-    # ── 3. Pie chart (unchanged) ────────────────────────────────────────────
-    major   = df[df["cum%"] <= 0.9]
-    other   = df[df["cum%"] > 0.9]["value"].sum()
-    pie_df  = major[["asset", "value"]]
+    pie_df = major[["asset", "value"]]
     if other > 0:
         pie_df.loc[len(pie_df)] = {"asset": "Other", "value": other}
 
     fig = px.pie(pie_df, names="asset", values="value", hole=0.4)
     st.plotly_chart(fig, use_container_width=True)
 
-    # ── 4. Display the table ────────────────────────────────────────────────
-    st.dataframe(df_fmt, hide_index=True)
+    # ── 4 · Pretty table (add thousand-sep strings, right-align) --------------
+    def fmt_amt(x, dec=6):   return f"{x:,.{dec}f}"
+    def fmt_val(x):          return f"{x:,.2f} {data['quote_asset']}"
+    def fmt_pct(x):          return f"{x*100:,.2f}%"
+
+    df_disp = df.copy()
+    df_disp["free"]        = df["free"].map(fmt_amt)
+    df_disp["used"]        = df["used"].map(fmt_amt)
+    df_disp["total"]       = df["total"].map(fmt_amt)
+    df_disp["quote_price"] = df["quote_price"].map(fmt_amt)
+    df_disp["value"]       = df["value"].map(fmt_val)
+    df_disp["share"]       = df["share"].map(fmt_pct)
+
+    st.dataframe(
+        df_disp,
+        hide_index=True,
+        column_order=["asset","free","used","total","quote_price","value","share"],
+        column_config={
+            "asset": st.column_config.TextColumn("Asset"),
+            "free":  st.column_config.TextColumn("Free"),
+            "used":  st.column_config.TextColumn("In orders"),
+            "total": st.column_config.TextColumn("Total"),
+            "quote_price": st.column_config.TextColumn(f"Price ({data['quote_asset']})"),
+            "value": st.column_config.TextColumn(f"Value ({data['quote_asset']})"),
+            "share": st.column_config.TextColumn("Share"),
+        },
+    )
