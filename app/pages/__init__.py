@@ -1,12 +1,12 @@
 """Registry of Streamlit pages so main.py can route dynamically."""
 from typing import Callable
 
-from . import dashboard, orders
+from . import orders, portfolio
 
 Page = Callable[[], None]
 
 registry: dict[str, Page] = {
-    "Dashboard": dashboard.render,
+    "Portfolio": portfolio.render,
     "Orders": orders.render,
 }
 

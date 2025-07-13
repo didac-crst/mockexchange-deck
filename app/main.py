@@ -1,14 +1,14 @@
 import streamlit as st
 from streamlit_autorefresh import st_autorefresh
 from app.config import settings
-from app.pages import dashboard, orders
+from app.pages import orders, portfolio
 
-st.sidebar.title("mockexchange‑deck")
-page = st.sidebar.radio("Navigate", ("Dashboard", "Orders"))
+st.sidebar.title("MockExchange Deck")
+page = st.sidebar.radio("Navigate", ("Portfolio", "Orders"))
 
 st_autorefresh(interval=settings()["REFRESH_SECONDS"] * 1000, key="refresh")
 
-if page == "Dashboard":
-    dashboard.render()
+if page == "Portfolio":
+    portfolio.render()
 else:
     orders.render()

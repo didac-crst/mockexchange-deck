@@ -11,4 +11,6 @@ def settings():
         "API_URL": os.getenv("API_URL", "http://localhost:8000"),
         "API_KEY": os.getenv("API_KEY", "dev-key"),
         "REFRESH_SECONDS": int(os.getenv("REFRESH_SECONDS", "10")),
+        # 🆕 Which currency to express equity in
+        "QUOTE_ASSET":  os.getenv("QUOTE_ASSET", "USDT"),
     }
