@@ -30,13 +30,18 @@ def render() -> None:
     df[["Asset", "quote_asset"]] = df["symbol"].str.split("/", expand=True)
 
     # 2-c  Execution latency in seconds
+    ts_post_num  = pd.to_numeric(df["ts_post"], errors="coerce")
+    ts_exec_num  = pd.to_numeric(df["ts_exec"], errors="coerce")
     df["Exec latency (s)"] = (
-        (df["ts_exec"] - df["ts_post"]).div(1000).round(2).where(df["ts_exec"].notna(), "")
+        (ts_exec_num - ts_post_num)            # vectorised diff → float64
+        .div(1000)                             # ms → s
+        .round(2)
+        .where(ts_exec_num.notna(), "")        # blank for open orders
     )
 
     # 2-d  Quantities
-    df["Qty Submitted"] = df["amount"].apply(lambda v: f"{v:,.6f}")
-    df["Qty Filled"]    = df["filled"].apply(lambda v: f"{v:,.6f}" if pd.notna(v) else "")
+    df["Booked Qty"] = df["amount"].apply(lambda v: f"{v:,.6f}")
+    df["Final Qty"]    = df["filled"].apply(lambda v: f"{v:,.6f}" if pd.notna(v) else "")
 
     # 2-e  Limit / exec prices (currency embedded, blank if None)
     df["Limit price"] = df.apply(
@@ -50,7 +55,8 @@ def render() -> None:
 
     # 2-f  Notions & fees with per-row currencies
     df["Booked notion"] = df.apply(
-        lambda r: f"{r['booked_notion']:,.2f} {r['notion_currency']}", axis=1
+        lambda r: f"{r['booked_notion']:,.2f} {r['notion_currency']}" if pd.notna(r["booked_notion"]) else "",
+        axis=1
     )
     df["Final notion"] = df.apply(
         lambda r: f"{r['notion']:,.2f} {r['notion_currency']}" if pd.notna(r["notion"]) else "",
@@ -78,11 +84,11 @@ def render() -> None:
             "Side",
             "Type",
             "Status",
-            "Qty Submitted",
+            "Booked Qty",
             "Limit price",
             "Booked notion",
             "Booked fee",
-            "Qty Filled",
+            "Final Qty",
             "Exec price",
             "Final notion",
             "Final fee",

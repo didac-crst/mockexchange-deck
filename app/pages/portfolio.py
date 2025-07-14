@@ -25,13 +25,9 @@ def render():
     df = df.sort_values("value", ascending=False)
 
     # ── 3 · Pie chart with “Other” bucket -------------------------------------
-    lim_min_share = 0.05          # 5 %
-    if len(df) <= 10:
-        major = df
-        other = 0
-    else:
-        major = df[df["share"] >= lim_min_share]
-        other = df.loc[df["share"] < lim_min_share, "value"].sum()
+    lim_min_share = 0.01          # 1 %
+    major = df[df["share"] >= lim_min_share]
+    other = df.loc[df["share"] < lim_min_share, "value"].sum()
 
     pie_df = major[["asset", "value"]]
     if other > 0:
@@ -64,6 +60,6 @@ def render():
             "total": st.column_config.TextColumn("Total"),
             "quote_price": st.column_config.TextColumn(f"Price ({data['quote_asset']})"),
             "value": st.column_config.TextColumn(f"Value ({data['quote_asset']})"),
-            "share": st.column_config.TextColumn("Share"),
+            "share": st.column_config.TextColumn("Share (%)"),
         },
     )
