@@ -72,7 +72,7 @@ def render() -> None:
     # 2-c  Execution latency in seconds
     ts_post_num  = pd.to_numeric(df["ts_post"], errors="coerce")
     ts_exec_num  = pd.to_numeric(df["ts_exec"], errors="coerce")
-    df["Exec latency"] = (
+    df["Exec. latency"] = (
         (ts_exec_num - ts_post_num)            # vectorised diff → float64
         .div(1000)                             # ms → s
         .round(2)
@@ -80,8 +80,8 @@ def render() -> None:
     )
 
     # 2-d  Quantities
-    df["Booked Qty"] = df["amount"].apply(lambda v: f"{v:,.6f}").apply(_remove_small_zeros)
-    df["Final Qty"]    = df["filled"].apply(lambda v: f"{v:,.6f}" if pd.notna(v) else "").apply(_remove_small_zeros)
+    df["Req. Qty"] = df["amount"].apply(lambda v: f"{v:,.6f}").apply(_remove_small_zeros)
+    df["Traded Qty"]    = df["filled"].apply(lambda v: f"{v:,.6f}" if pd.notna(v) else "").apply(_remove_small_zeros)
 
     # 2-e  Limit / exec prices (currency embedded, blank if None)
     df["Limit price"] = df.apply(
@@ -91,7 +91,7 @@ def render() -> None:
         ),
         axis=1,
     )
-    df["Exec price"] = df.apply(
+    df["Exec. price"] = df.apply(
         lambda r: (
             f"{_remove_small_zeros('{:,.6f}'.format(r['price']))} {r['quote_asset']}"
             if pd.notna(r["price"]) else ""
@@ -100,29 +100,25 @@ def render() -> None:
     )
 
     # 2-f  Notions & fees with per-row currencies
-    df["Booked notion"] = df.apply(
+    df["Booked notional"] = df.apply(
         lambda r: f"{r['booked_notion']:,.2f} {r['notion_currency']}" if pd.notna(r["booked_notion"]) else "",
         axis=1
     )
-    df["Final notion"] = df.apply(
+    df["Exec. notional"] = df.apply(
         lambda r: f"{r['notion']:,.2f} {r['notion_currency']}" if pd.notna(r["notion"]) else "",
         axis=1,
     )
     df["Booked fee"] = df.apply(
         lambda r: f"{r['booked_fee']:,.2f} {r['fee_currency']}", axis=1
     )
-    df["Final fee"] = df.apply(
+    df["Exec. fee"] = df.apply(
         lambda r: f"{r['fee_cost']:,.2f} {r['fee_currency']}" if pd.notna(r["fee_cost"]) else "",
         axis=1,
     )
 
     # 2-g Other columns
     df["Order ID"] = df["id"].astype(str)  # ensure string type
-    # df["Exec latency"] = df.apply(
-    #     lambda r: f"{r['Exec latency']:,.2f} s" if pd.notna(r["Exec latency"]) else "",
-    #     axis=1
-    # )
-    df["Exec latency"] = df["Exec latency"].apply(
+    df["Exec. latency"] = df["Exec. latency"].apply(
         lambda v: f"{v:,.2f} s" if isinstance(v, (int, float)) and pd.notna(v) else ""
     )
 
@@ -140,15 +136,15 @@ def render() -> None:
             "Side",
             "Type",
             "Status",
-            "Booked Qty",
+            "Req. Qty",
             "Limit price",
-            "Booked notion",
+            "Booked notional",
             "Booked fee",
-            "Final Qty",
-            "Exec price",
-            "Final notion",
-            "Final fee",
-            "Exec latency",
+            "Traded Qty",
+            "Exec. price",
+            "Exec. notional",
+            "Exec. fee",
+            "Exec. latency",
         ]
     ]
 
@@ -162,14 +158,14 @@ def render() -> None:
             "Type":       st.column_config.TextColumn("Type"),
             "Status":     st.column_config.TextColumn("Status"),
             "Posted":     st.column_config.DatetimeColumn("Posted", format="YYYY-MM-DD HH:mm:ss"),
-            "Qty Submitted": st.column_config.TextColumn("Qty Submitted"),
+            "Req. Qty": st.column_config.TextColumn("Req. Qty"),
             "Limit price": st.column_config.TextColumn("Limit price"),
-            "Booked notion": st.column_config.TextColumn("Booked notion"),
+            "Booked notional": st.column_config.TextColumn("Booked notional"),
             "Booked fee": st.column_config.TextColumn("Booked fee"),
-            "Qty Filled": st.column_config.TextColumn("Qty Filled"),
-            "Exec price": st.column_config.TextColumn("Exec price"),
-            "Final notion": st.column_config.TextColumn("Final notion"),
-            "Final fee": st.column_config.TextColumn("Final fee"),
-            "Exec latency": st.column_config.TextColumn("Exec latency"),
+            "Traded Qty": st.column_config.TextColumn("Traded Qty"),
+            "Exec. price": st.column_config.TextColumn("Exec. price"),
+            "Exec. notional": st.column_config.TextColumn("Exec. notional"),
+            "Exec. fee": st.column_config.TextColumn("Exec. fee"),
+            "Exec. latency": st.column_config.TextColumn("Exec. latency"),
         },
     )
