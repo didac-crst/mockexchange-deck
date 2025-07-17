@@ -1,7 +1,7 @@
 import streamlit as st
 from streamlit_autorefresh import st_autorefresh
 from app.config import settings
-from app.pages import orders, portfolio
+from app._pages import orders, portfolio
 
 st.sidebar.title("MockExchange")
 page = st.sidebar.radio("Navigate", ("portfolio", "orders"))
