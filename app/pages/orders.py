@@ -23,20 +23,51 @@ def _human_ts(ms: int | None) -> str:
 
 def render() -> None:
     # ── 1 · Fetch raw orders ------------------------------------------------
-    df = get_orders()                         # raw cols exactly as the API sends
+    df_raw = get_orders()                         # raw cols exactly as the API sends
 
-    if df.empty:
+    if df_raw.empty:
         st.info("No orders found.")
         return
 
     # ── 2 · Data-massage ----------------------------------------------------
-    df = df.copy()
+    df_copy = df_raw.copy()
 
     # 2-a  Readable timestamps
-    df["Posted"] = df["ts_post"].map(_human_ts)
+    df_copy["Posted"] = df_copy["ts_post"].map(_human_ts)
 
     # 2-b  Split symbol into base / quote
-    df[["Asset", "quote_asset"]] = df["symbol"].str.split("/", expand=True)
+    df_copy[["Asset", "quote_asset"]] = df_copy["symbol"].str.split("/", expand=True)
+
+    # ── FILTERS ────────────────────────────────────────────────────────── #
+    with st.expander("Filters", expanded=False):
+        # • Streamlit widgets return Python lists → amenable to .isin()
+        status_sel = st.multiselect(
+            "Status", df_copy["status"].str.capitalize().unique().tolist(),
+            default=df_copy["status"].str.capitalize().unique().tolist()
+        )
+        side_sel = st.multiselect(
+            "Side", df_copy["side"].str.upper().unique().tolist(),
+            default=df_copy["side"].str.upper().unique().tolist()
+        )
+        type_sel = st.multiselect(
+            "Type", df_copy["type"].str.capitalize().unique().tolist(),
+            default=df_copy["type"].str.capitalize().unique().tolist()
+        )
+        asset_sel = st.multiselect(
+            "Asset (base)", df_copy["Asset"].unique().tolist(),
+            default=df_copy["Asset"].unique().tolist()
+        )
+
+    # Boolean mask (no copy yet → cheap)
+    mask = (
+        df_copy["status"].str.capitalize().isin(status_sel)
+        & df_copy["side"].str.upper().isin(side_sel)
+        & df_copy["type"].str.capitalize().isin(type_sel)
+        & df_copy["Asset"].isin(asset_sel)
+    )
+
+    df = df_copy[mask].copy()      # operate on the filtered slice from here on
+    # ───────────────────────────────────────────────────────────────────── #
 
     # 2-c  Execution latency in seconds
     ts_post_num  = pd.to_numeric(df["ts_post"], errors="coerce")
@@ -87,9 +118,12 @@ def render() -> None:
 
     # 2-g Other columns
     df["Order ID"] = df["id"].astype(str)  # ensure string type
-    df["Exec latency"] = df.apply(
-        lambda r: f"{r['Exec latency']:,.2f} s" if pd.notna(r["Exec latency"]) else "",
-        axis=1
+    # df["Exec latency"] = df.apply(
+    #     lambda r: f"{r['Exec latency']:,.2f} s" if pd.notna(r["Exec latency"]) else "",
+    #     axis=1
+    # )
+    df["Exec latency"] = df["Exec latency"].apply(
+        lambda v: f"{v:,.2f} s" if isinstance(v, (int, float)) and pd.notna(v) else ""
     )
 
     # 2-g  Readable enums
