@@ -4,6 +4,8 @@ import plotly.express as px
 import streamlit as st
 from app.services.api import get_balance
 
+from ._helpers import _remove_small_zeros
+
 
 def render():
     data = get_balance()
@@ -37,7 +39,8 @@ def render():
     st.plotly_chart(fig, use_container_width=True)
 
     # ── 4 · Pretty table (add thousand-sep strings, right-align) --------------
-    def fmt_amt(x, dec=6):   return f"{x:,.{dec}f}"
+    def fmt_amt(x):          return _remove_small_zeros('{:,.6f}'.format(x))
+    def fmt_price(x):       return f"{fmt_amt(x)} {data['quote_asset']}"
     def fmt_val(x):          return f"{x:,.2f} {data['quote_asset']}"
     def fmt_pct(x):          return f"{x*100:,.2f}%"
 
@@ -45,7 +48,7 @@ def render():
     df_disp["free"]        = df["free"].map(fmt_amt)
     df_disp["used"]        = df["used"].map(fmt_amt)
     df_disp["total"]       = df["total"].map(fmt_amt)
-    df_disp["quote_price"] = df["quote_price"].map(fmt_amt)
+    df_disp["quote_price"] = df["quote_price"].map(fmt_price)
     df_disp["value"]       = df["value"].map(fmt_val)
     df_disp["share"]       = df["share"].map(fmt_pct)
 

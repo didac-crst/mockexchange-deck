@@ -3,6 +3,12 @@ import streamlit as st
 from datetime import datetime, timezone
 from app.services.api import get_orders
 
+from ._helpers import _remove_small_zeros
+
+
+# --------------------------------------------------------------------- #
+# Helpers
+# --------------------------------------------------------------------- #
 
 def _human_ts(ms: int | None) -> str:
     """Return `YYYY-MM-DD HH:MM:SS` in the user’s local TZ (Europe/Berlin)."""
@@ -11,6 +17,9 @@ def _human_ts(ms: int | None) -> str:
     dt = datetime.fromtimestamp(ms / 1000, tz=timezone.utc).astimezone()
     return dt.strftime("%Y-%m-%d %H:%M:%S")
 
+# --------------------------------------------------------------------- #
+# Main render function
+# --------------------------------------------------------------------- #
 
 def render() -> None:
     # ── 1 · Fetch raw orders ------------------------------------------------
@@ -32,7 +41,7 @@ def render() -> None:
     # 2-c  Execution latency in seconds
     ts_post_num  = pd.to_numeric(df["ts_post"], errors="coerce")
     ts_exec_num  = pd.to_numeric(df["ts_exec"], errors="coerce")
-    df["Exec latency (s)"] = (
+    df["Exec latency"] = (
         (ts_exec_num - ts_post_num)            # vectorised diff → float64
         .div(1000)                             # ms → s
         .round(2)
@@ -40,17 +49,23 @@ def render() -> None:
     )
 
     # 2-d  Quantities
-    df["Booked Qty"] = df["amount"].apply(lambda v: f"{v:,.6f}")
-    df["Final Qty"]    = df["filled"].apply(lambda v: f"{v:,.6f}" if pd.notna(v) else "")
+    df["Booked Qty"] = df["amount"].apply(lambda v: f"{v:,.6f}").apply(_remove_small_zeros)
+    df["Final Qty"]    = df["filled"].apply(lambda v: f"{v:,.6f}" if pd.notna(v) else "").apply(_remove_small_zeros)
 
     # 2-e  Limit / exec prices (currency embedded, blank if None)
     df["Limit price"] = df.apply(
-        lambda r: f"{r['limit_price']:,.6f} {r['quote_asset']}" if pd.notna(r["limit_price"]) else "",
+        lambda r: (
+            f"{_remove_small_zeros('{:,.6f}'.format(r['limit_price']))} {r['quote_asset']}"
+            if pd.notna(r['limit_price']) else ""
+        ),
         axis=1,
     )
     df["Exec price"] = df.apply(
-        lambda r: f"{r['price']:,.6f} {r['quote_asset']}" if pd.notna(r["price"]) else "",
-        axis=1,
+        lambda r: (
+            f"{_remove_small_zeros('{:,.6f}'.format(r['price']))} {r['quote_asset']}"
+            if pd.notna(r["price"]) else ""
+        ),
+        axis=1
     )
 
     # 2-f  Notions & fees with per-row currencies
@@ -70,6 +85,13 @@ def render() -> None:
         axis=1,
     )
 
+    # 2-g Other columns
+    df["Order ID"] = df["id"].astype(str)  # ensure string type
+    df["Exec latency"] = df.apply(
+        lambda r: f"{r['Exec latency']:,.2f} s" if pd.notna(r["Exec latency"]) else "",
+        axis=1
+    )
+
     # 2-g  Readable enums
     df["Side"]   = df["side"].str.upper()
     df["Type"]   = df["type"].str.capitalize()
@@ -79,7 +101,7 @@ def render() -> None:
     df_view = df[
         [
             "Posted",
-            "id",
+            "Order ID",
             "Asset",
             "Side",
             "Type",
@@ -92,33 +114,9 @@ def render() -> None:
             "Exec price",
             "Final notion",
             "Final fee",
-            "Exec latency (s)",
+            "Exec latency",
         ]
-    ].rename(
-        columns={
-            "id": "Order ID",
-        }
-    )
-
-    # ── 4 · Display ---------------------------------------------------------
-    st.markdown(
-        """
-        <style>
-        /* right-align every cell inside this dataframe */
-        div[data-testid="stDataFrame"] div[role="gridcell"] {
-            justify-content: flex-end !important;
-            text-align: right !important;
-        }
-        /* left-align the first two (ID & Pair) for readability */
-        div[data-testid="stDataFrame"] div[role="gridcell"]:nth-child(1),
-        div[data-testid="stDataFrame"] div[role="gridcell"]:nth-child(2) {
-            justify-content: flex-start !important;
-            text-align: left !important;
-        }
-        </style>
-        """,
-        unsafe_allow_html=True,
-    )
+    ]
 
     st.dataframe(
         df_view,
@@ -138,6 +136,6 @@ def render() -> None:
             "Exec price": st.column_config.TextColumn("Exec price"),
             "Final notion": st.column_config.TextColumn("Final notion"),
             "Final fee": st.column_config.TextColumn("Final fee"),
-            "Exec latency (s)": st.column_config.TextColumn("Exec latency (s)"),
+            "Exec latency": st.column_config.TextColumn("Exec latency"),
         },
     )
