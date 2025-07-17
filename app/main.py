@@ -4,11 +4,11 @@ from app.config import settings
 from app._pages import orders, portfolio
 
 st.sidebar.title("MockExchange")
-page = st.sidebar.radio("Navigate", ("portfolio", "orders"))
+page = st.sidebar.radio("Navigate", ("Portfolio", "Orders"))
 
 st_autorefresh(interval=settings()["REFRESH_SECONDS"] * 1000, key="refresh")
 
-if page == "portfolio":
+if page == "Portfolio":
     portfolio.render()
-else:
+elif page == "Orders":
     orders.render()

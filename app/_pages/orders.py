@@ -22,6 +22,8 @@ def _human_ts(ms: int | None) -> str:
 # --------------------------------------------------------------------- #
 
 def render() -> None:
+    st.set_page_config(page_title="Orders")   # browser tab + sidebar
+    st.title("Orders dashboard")           # big title inside the page
     # ── 1 · Fetch raw orders ------------------------------------------------
     df_raw = get_orders()                         # raw cols exactly as the API sends
 
