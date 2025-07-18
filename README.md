@@ -17,13 +17,11 @@
 
 ---
 
-## 🖼️ Screenshots / placeholders  
+## 🖼️ UI Screenshots 
 
-```
 ![Portfolio dashboard](./docs/img/portfolio_page.png)
 
 ![Orders page](./docs/orders_page.png)
-```
 
 ---
 
