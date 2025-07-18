@@ -21,7 +21,7 @@
 
 ![Portfolio dashboard](./docs/img/portfolio_page.png)
 
-![Orders page](./docs/orders_page.png)
+![Orders page](./docs/img/orders_page.png)
 
 ---
 
