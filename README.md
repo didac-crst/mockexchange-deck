@@ -9,7 +9,7 @@
 
 ## ✨ Features  
 
-*   Real-time **portfolio dashboard** with equity value, asset allocation pie and P & L.  
+*   Real-time **portfolio dashboard** with equity value and asset allocation pie.  
 *   **Orders** table with status, execution price, fees and latency.  
 *   Automatic refresh every *REFRESH_SECONDS* (default 60 s).  
 *   Clean Streamlit UI that works on desktop and mobile.  
