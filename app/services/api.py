@@ -119,13 +119,13 @@ def get_active_asset_count() -> int:
     """Thin helper for places that only need the tally shown by `/balance/list`."""
     return _get("/balance/list")["count"]
 
-def get_orders(status: str | None = None, limit: int = 50) -> pd.DataFrame:
+def get_orders(status: str | None = None, tail: int = 50) -> pd.DataFrame:
     """
     Fetch recent orders from `/orders` endpoint and return a tidy DataFrame.
 
     Args:
         status: 'open', 'filled', 'canceled', … or None for all.
-        limit:  max rows to pull.
+        tail:  max tail rows to pull.
 
     The endpoint is expected to return a JSON list of dicts, each at least:
         { "id": "...", "asset": "BTC", "side": "BUY", "qty": 0.1,
@@ -134,8 +134,8 @@ def get_orders(status: str | None = None, limit: int = 50) -> pd.DataFrame:
     params = []
     if status:
         params.append(f"status={status}")
-    if limit:
-        params.append(f"limit={limit}")
+    if tail:
+        params.append(f"tail={tail}")
     path = "/orders" + ("?" + "&".join(params) if params else "")
     rows = _get(path)                       # <- uses the existing private helper
     return pd.DataFrame(rows)

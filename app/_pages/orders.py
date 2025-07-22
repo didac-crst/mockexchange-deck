@@ -17,75 +17,110 @@ def _human_ts(ms: int | None) -> str:
     dt = datetime.fromtimestamp(ms / 1000, tz=timezone.utc).astimezone()
     return dt.strftime("%Y-%m-%d %H:%M:%S")
 
-# --------------------------------------------------------------------- #
-# Main render function
-# --------------------------------------------------------------------- #
 
 def render() -> None:
-    st.set_page_config(page_title="Orders")   # browser tab + sidebar
-    st.title("Orders dashboard")           # big title inside the page
-    # ── 1 · Fetch raw orders ------------------------------------------------
-    df_raw = get_orders()                         # raw cols exactly as the API sends
+    st.set_page_config(page_title="Orders")
+    st.title("Orders dashboard")
 
+    FILTER_KEYS = ["status_filter", "side_filter", "type_filter", "asset_filter"]
+
+    # ---------- 1 · Filters expander (define once, reuse) -------------------
+    filters_expander = st.expander("Filters", expanded=False)
+
+    # 1-a Slider first (needs to run before API call)
+    with filters_expander:
+        tail = st.slider(
+            "Max number of last orders to load",
+            10, 5000, 50, 10,
+            key="tail_slider",
+        )
+
+    # 1-b Fetch data
+    df_raw = get_orders(tail=tail)
     if df_raw.empty:
         st.info("No orders found.")
         return
 
-    # ── 2 · Data-massage ----------------------------------------------------
+    # ---------- 2 · Data massage -------------------------------------------
     df_copy = df_raw.copy()
-
-    # 2-a  Readable timestamps
     df_copy["Posted"] = df_copy["ts_post"].map(_human_ts)
-
-    # 2-b  Split symbol into base / quote
     df_copy[["Asset", "quote_asset"]] = df_copy["symbol"].str.split("/", expand=True)
 
-    # ── FILTERS ────────────────────────────────────────────────────────── #
-    with st.expander("Filters", expanded=False):
-        # • Streamlit widgets return Python lists → amenable to .isin()
-        status_sel = st.multiselect(
-            "Status", df_copy["status"].str.capitalize().unique().tolist(),
-            default=df_copy["status"].str.capitalize().unique().tolist()
-        )
-        side_sel = st.multiselect(
-            "Side", df_copy["side"].str.upper().unique().tolist(),
-            default=df_copy["side"].str.upper().unique().tolist()
-        )
-        type_sel = st.multiselect(
-            "Type", df_copy["type"].str.capitalize().unique().tolist(),
-            default=df_copy["type"].str.capitalize().unique().tolist()
-        )
-        asset_sel = st.multiselect(
-            "Asset (base)", df_copy["Asset"].unique().tolist(),
-            default=df_copy["Asset"].unique().tolist()
-        )
+    # ---------- 3 · Init & sync filter state --------------------------------
+    def _sync_filter_state(key: str, options: list[str]) -> None:
+        """Ensure session_state[key] exists and only contains valid options.
+        If it's empty, keep it empty (user intentionally cleared it)."""
+        if key not in st.session_state:
+            st.session_state[key] = options[:]          # first init = all
+            return
 
-    # Boolean mask (no copy yet → cheap)
+        kept = [v for v in st.session_state[key] if v in options]
+        # DO NOT auto-refill if user cleared everything
+        st.session_state[key] = kept
+
+    # Build option lists once
+    status_opts = df_copy["status"].str.capitalize().unique().tolist()
+    side_opts   = df_copy["side"].str.upper().unique().tolist()
+    type_opts   = df_copy["type"].str.capitalize().unique().tolist()
+    asset_opts  = df_copy["Asset"].unique().tolist()
+
+    # Optional: reset when tail changed drastically (prevents stale selections)
+    if st.session_state.get("_last_tail") != tail:
+        for k in FILTER_KEYS:
+            st.session_state.pop(k, None)
+        st.session_state["_last_tail"] = tail
+
+    # Sync all filters
+    _sync_filter_state("status_filter", status_opts)
+    _sync_filter_state("side_filter",   side_opts)
+    _sync_filter_state("type_filter",   type_opts)
+    _sync_filter_state("asset_filter",  asset_opts)
+
+    # ---------- 4 · Widgets (same expander) --------------------------------
+    with filters_expander:
+        left, right = st.columns([0.8, 0.2])
+
+        with right:
+            st.write("")  # spacer
+            st.write("")  # (optional) push button down a bit
+            if st.button("🔄 Reset filters"):
+                for k in FILTER_KEYS:
+                    st.session_state.pop(k, None)
+                # Re-seed defaults
+                _sync_filter_state("status_filter", status_opts)
+                _sync_filter_state("side_filter",   side_opts)
+                _sync_filter_state("type_filter",   type_opts)
+                _sync_filter_state("asset_filter",  asset_opts)
+                st.rerun()
+
+        with left:
+            status_sel = st.multiselect("Status", status_opts, key="status_filter")
+            side_sel   = st.multiselect("Side",   side_opts,   key="side_filter")
+            type_sel   = st.multiselect("Type",   type_opts,   key="type_filter")
+            asset_sel  = st.multiselect("Asset (base)", asset_opts, key="asset_filter")
+
+    # ---------- 5 · Apply mask ---------------------------------------------
     mask = (
         df_copy["status"].str.capitalize().isin(status_sel)
         & df_copy["side"].str.upper().isin(side_sel)
         & df_copy["type"].str.capitalize().isin(type_sel)
         & df_copy["Asset"].isin(asset_sel)
     )
+    df = df_copy[mask].copy()
 
-    df = df_copy[mask].copy()      # operate on the filtered slice from here on
-    # ───────────────────────────────────────────────────────────────────── #
-
-    # 2-c  Execution latency in seconds
-    ts_post_num  = pd.to_numeric(df["ts_post"], errors="coerce")
-    ts_exec_num  = pd.to_numeric(df["ts_exec"], errors="coerce")
+    # ---------- 6 · Rest of your logic (unchanged) --------------------------
+    ts_post_num = pd.to_numeric(df["ts_post"], errors="coerce")
+    ts_exec_num = pd.to_numeric(df["ts_exec"], errors="coerce")
     df["Exec. latency"] = (
-        (ts_exec_num - ts_post_num)            # vectorised diff → float64
-        .div(1000)                             # ms → s
+        (ts_exec_num - ts_post_num)
+        .div(1000)
         .round(2)
-        .where(ts_exec_num.notna(), "")        # blank for open orders
+        .where(ts_exec_num.notna(), "")
     )
 
-    # 2-d  Quantities
-    df["Req. Qty"] = df["amount"].apply(lambda v: f"{v:,.6f}").apply(_remove_small_zeros)
-    df["Traded Qty"]    = df["filled"].apply(lambda v: f"{v:,.6f}" if pd.notna(v) else "").apply(_remove_small_zeros)
+    df["Req. Qty"]     = df["amount"].apply(lambda v: f"{v:,.6f}").apply(_remove_small_zeros)
+    df["Traded Qty"]   = df["filled"].apply(lambda v: f"{v:,.6f}" if pd.notna(v) else "").apply(_remove_small_zeros)
 
-    # 2-e  Limit / exec prices (currency embedded, blank if None)
     df["Limit price"] = df.apply(
         lambda r: (
             f"{_remove_small_zeros('{:,.6f}'.format(r['limit_price']))} {r['quote_asset']}"
@@ -101,7 +136,6 @@ def render() -> None:
         axis=1
     )
 
-    # 2-f  Notions & fees with per-row currencies
     df["Booked notional"] = df.apply(
         lambda r: f"{r['booked_notion']:,.2f} {r['notion_currency']}" if pd.notna(r["booked_notion"]) else "",
         axis=1
@@ -118,56 +152,44 @@ def render() -> None:
         axis=1,
     )
 
-    # 2-g Other columns
-    df["Order ID"] = df["id"].astype(str)  # ensure string type
+    df["Order ID"] = df["id"].astype(str)
     df["Exec. latency"] = df["Exec. latency"].apply(
         lambda v: f"{v:,.2f} s" if isinstance(v, (int, float)) and pd.notna(v) else ""
     )
 
-    # 2-g  Readable enums
     df["Side"]   = df["side"].str.upper()
     df["Type"]   = df["type"].str.capitalize()
     df["Status"] = df["status"].str.capitalize()
 
-    # ── 3 · Keep only the pretty columns, rename nicely ---------------------
     df_view = df[
         [
-            "Posted",
-            "Order ID",
-            "Asset",
-            "Side",
-            "Type",
-            "Status",
-            "Req. Qty",
-            "Limit price",
-            "Booked notional",
-            "Booked fee",
-            "Traded Qty",
-            "Exec. price",
-            "Exec. notional",
-            "Exec. fee",
+            "Posted", "Order ID", "Asset", "Side", "Type", "Status",
+            "Req. Qty", "Limit price", "Booked notional", "Booked fee",
+            "Traded Qty", "Exec. price", "Exec. notional", "Exec. fee",
             "Exec. latency",
         ]
     ]
+
+    st.caption(f"🧾 Loaded {len(df_raw)} rows (showing {len(df_view)}) from last {tail} orders")
 
     st.dataframe(
         df_view,
         hide_index=True,
         column_config={
-            "Order ID":  st.column_config.TextColumn("Order ID"),
-            "Asset":      st.column_config.TextColumn("Asset"),
-            "Side":       st.column_config.TextColumn("Side"),
-            "Type":       st.column_config.TextColumn("Type"),
-            "Status":     st.column_config.TextColumn("Status"),
-            "Posted":     st.column_config.DatetimeColumn("Posted", format="YYYY-MM-DD HH:mm:ss"),
-            "Req. Qty": st.column_config.TextColumn("Req. Qty"),
-            "Limit price": st.column_config.TextColumn("Limit price"),
+            "Order ID":        st.column_config.TextColumn("Order ID"),
+            "Asset":           st.column_config.TextColumn("Asset"),
+            "Side":            st.column_config.TextColumn("Side"),
+            "Type":            st.column_config.TextColumn("Type"),
+            "Status":          st.column_config.TextColumn("Status"),
+            "Posted":          st.column_config.DatetimeColumn("Posted", format="YYYY-MM-DD HH:mm:ss"),
+            "Req. Qty":        st.column_config.TextColumn("Req. Qty"),
+            "Limit price":     st.column_config.TextColumn("Limit price"),
             "Booked notional": st.column_config.TextColumn("Booked notional"),
-            "Booked fee": st.column_config.TextColumn("Booked fee"),
-            "Traded Qty": st.column_config.TextColumn("Traded Qty"),
-            "Exec. price": st.column_config.TextColumn("Exec. price"),
-            "Exec. notional": st.column_config.TextColumn("Exec. notional"),
-            "Exec. fee": st.column_config.TextColumn("Exec. fee"),
-            "Exec. latency": st.column_config.TextColumn("Exec. latency"),
+            "Booked fee":      st.column_config.TextColumn("Booked fee"),
+            "Traded Qty":      st.column_config.TextColumn("Traded Qty"),
+            "Exec. price":     st.column_config.TextColumn("Exec. price"),
+            "Exec. notional":  st.column_config.TextColumn("Exec. notional"),
+            "Exec. fee":       st.column_config.TextColumn("Exec. fee"),
+            "Exec. latency":   st.column_config.TextColumn("Exec. latency"),
         },
     )
