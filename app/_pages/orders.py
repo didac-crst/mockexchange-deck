@@ -196,7 +196,7 @@ def render() -> None:
     df["Status"] = df["status"].str.replace("_", " ").str.capitalize()
 
     df_view = df[
-        ["Posted", "Order ID", "Updated", "Asset", "Side", "Status", "Type",
+        ["Order ID", "Posted", "Updated", "Asset", "Side", "Status", "Type",
          "Limit price", "Exec. price", "Req. Qty", "Filled Qty",
          "Reserved notional", "Actual notional",
          "Reserved fee", "Actual fee", "Exec. latency"]
