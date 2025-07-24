@@ -201,8 +201,6 @@ def render() -> None:
          "Reserved notional", "Actual notional",
          "Reserved fee", "Actual fee", "Exec. latency"]
     ].sort_values("Updated", ascending=False).reset_index(drop=True)
-    # Set the first column as index to avoid showing the default index
-    df_view.set_index("Order ID", inplace=True)
 
     # ── 6½ · Row-level highlighting for *fresh* updates ─────────────────
     def _row_style(row: pd.Series, *, fresh_window_s: int = FRESH_WINDOW_S) -> list[str]:
@@ -233,6 +231,7 @@ def render() -> None:
     # ── 7 · Show the table ──────────────────────────────────────────────
     st.dataframe(
         styler,
+        hide_index=True,
         use_container_width=True,
         height=800,   # ~25 rows on FHD
         column_config={
