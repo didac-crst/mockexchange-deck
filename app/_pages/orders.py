@@ -201,6 +201,8 @@ def render() -> None:
          "Reserved notional", "Actual notional",
          "Reserved fee", "Actual fee", "Exec. latency"]
     ].sort_values("Updated", ascending=False).reset_index(drop=True)
+    # Set the first column as index to avoid showing the default index
+    df_view.set_index("Order ID", inplace=True)
 
     # ── 6½ · Row-level highlighting for *fresh* updates ─────────────────
     def _row_style(row: pd.Series, *, fresh_window_s: int = FRESH_WINDOW_S) -> list[str]:
@@ -234,6 +236,23 @@ def render() -> None:
         use_container_width=True,
         height=800,   # ~25 rows on FHD
         column_config={
-            # (column_config unchanged – only presentation)
+            "Order ID":          st.column_config.TextColumn("Order ID"),
+            "Asset":             st.column_config.TextColumn("Asset"),
+            "Side":              st.column_config.TextColumn("Side"),
+            "Type":              st.column_config.TextColumn("Type"),
+            "Status":            st.column_config.TextColumn("Status"),
+            "Posted":            st.column_config.DatetimeColumn("Posted",
+                                                                format="YY-MM-DD HH:mm:ss"),
+            "Updated":           st.column_config.DatetimeColumn("Updated",
+                                                                format="YY-MM-DD HH:mm:ss"),
+            "Req. Qty":          st.column_config.TextColumn("Req. Qty"),
+            "Limit price":       st.column_config.TextColumn("Limit price"),
+            "Reserved notional": st.column_config.TextColumn("Reserved notional"),
+            "Reserved fee":      st.column_config.TextColumn("Reserved fee"),
+            "Filled Qty":        st.column_config.TextColumn("Filled Qty"),
+            "Actual notional":   st.column_config.TextColumn("Actual notional"),
+            "Actual fee":        st.column_config.TextColumn("Actual fee"),
+            "Exec. price":       st.column_config.TextColumn("Exec. price"),
+            "Exec. latency":     st.column_config.TextColumn("Exec. latency"),
         },
     )
