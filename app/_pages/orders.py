@@ -1,5 +1,6 @@
 import pandas as pd
 import streamlit as st
+import time
 from datetime import datetime, timezone
 from app.services.api import get_orders
 
@@ -9,6 +10,17 @@ from ._helpers import _remove_small_zeros
 # --------------------------------------------------------------------- #
 # Helpers
 # --------------------------------------------------------------------- #
+
+_BG = {
+    "new":                 "#0073ff",  # blue
+    "partially_filled":    "#ffcc00",  # yellow
+    "filled":              "#00cc00",  # green
+    "canceled":            "#ff4040",  # red-ish
+    "partially_canceled":  "#ff4040",
+    "rejected":            "#ff4040",
+    "expired":             "#ff4040",
+}
+
 
 def _human_ts(ms: int | None) -> str:
     """Return `YYYY-MM-DD HH:MM:SS` in the user’s local TZ (Europe/Berlin)."""
@@ -109,6 +121,12 @@ def render() -> None:
     )
     df = df_copy[mask].copy()
 
+            
+    st.caption(
+        f"🧾 Loaded {len(df_raw)} rows (showing {len(df)}) "
+        f"from last {tail} orders"
+    )
+
     # ---------- 6 · Rest of your logic (unchanged) --------------------------
     ts_create_num = pd.to_numeric(df["ts_create"], errors="coerce")
     ts_finish_num = pd.to_numeric(df["ts_finish"], errors="coerce")
@@ -171,46 +189,62 @@ def render() -> None:
             "Reserved fee", "Actual fee", "Exec. latency",
         ]
     ]
-    # sort by Posted date, descending
-    df_view = df_view.sort_values("Posted", ascending=False)
+
+    # ------------------------------------------------------------------ #
+    # 8 · Remember newest ts_update for next refresh                     #
+    # ------------------------------------------------------------------ #
+    # if not df_view["updated_ms"].isna().all():
+    #     st.session_state["orders_last_seen"] = int(df_view["updated_ms"].max())
 
     # ------------------------------------------------------------------ #
     # 6½ · Row-highlighting for “fresh” updates                          #
     # ------------------------------------------------------------------ #
 
-    # 1) keep helper col for Pandas to read in the styling callback
-    df_view["updated_ms"] = df["ts_update"].astype("Int64")
 
-    last_seen = st.session_state.get("orders_last_seen")
+    def _row_style(row: pd.Series, *, fresh_window_s: int = 60) -> list[str]:
+        """Return one CSS style per cell.
 
-    def _row_style(row: pd.Series) -> list[str]:
-        """Return CSS strings (one per cell) – pastel bg + black text for *new* rows."""
-        if (
-            last_seen is None
-            or pd.isna(row["updated_ms"])
-            or row["updated_ms"] <= last_seen
-        ):
-            return [""] * len(row)   # unchanged row → no styling
+        A row is considered “fresh” when **Updated** is within *fresh_window_s*
+        seconds from *now* – then we colour-code it by status.  Otherwise it’s
+        left unstyled.
 
-        bg = {
-            "new":                 "#cce0ff",  # blue
-            "partially_filled":    "#fff4cc",  # yellow
-            "filled":              "#d4edda",  # green
-            "canceled":            "#f8d7da",  # red-ish
-            "partially_canceled":  "#f8d7da",
-            "rejected":            "#f8d7da",
-            "expired":             "#f8d7da",
-        }.get(row["Status"].lower().replace(" ", "_"), "")
+        Parameters
+        ----------
+        row : pd.Series
+            The row from the Styler apply-callback.
+        fresh_window_s : int, default 60
+            How many seconds a row stays highlighted after its update.
+        """
+        # 1) Parse Updated → epoch-seconds (robust even if it’s already a str)
+        try:
+            upd_ts = (
+                row["Updated"].timestamp()
+                if isinstance(row["Updated"], pd.Timestamp)
+                else pd.to_datetime(row["Updated"], errors="coerce").timestamp()
+            )
+        except Exception:
+            upd_ts = None  # any parsing failure → treat as stale
 
-        style = f"background-color: {bg}; color: black" if bg else ""
+        if upd_ts is None or (time.time() - upd_ts) > fresh_window_s:
+            return [""] * len(row)                    # stale → no style
+
+        # 2) Map status → pastel background
+        status = str(row["Status"]).lower().replace(" ", "_")
+        bg = _BG.get(status, "")
+
+        style = f"background-color:{bg};color:black" if bg else ""
         return [style] * len(row)
+
+
 
     styler = (
         df_view.style
             .apply(_row_style, axis=1)
-            .hide(axis="index")                 # hide the numeric index
-            .hide(axis="columns", subset=["updated_ms"])   #  <-- tell it “column”
+            # .hide(axis="index")                 # hide the numeric index
     )
+
+    df_view.sort_values("Updated", ascending=False, inplace=True)
+    df_view.reset_index(drop=True, inplace=True)
 
     # ------------------------------------------------------------------ #
     # 7 · Streamlit interactive table                                    #
@@ -218,6 +252,7 @@ def render() -> None:
     st.dataframe(
         styler,                     # <-- pass the Styler directly!
         use_container_width=True,
+        height=800,            # 👈  increase viewport – e.g. ~25 rows on a 1080-p display
         column_config={
             "Order ID":          st.column_config.TextColumn("Order ID"),
             "Asset":             st.column_config.TextColumn("Asset"),
@@ -238,15 +273,4 @@ def render() -> None:
             "Exec. price":       st.column_config.TextColumn("Exec. price"),
             "Exec. latency":     st.column_config.TextColumn("Exec. latency"),
         },
-    )
-
-    # ------------------------------------------------------------------ #
-    # 8 · Remember newest ts_update for next refresh                     #
-    # ------------------------------------------------------------------ #
-    if not df_view["updated_ms"].isna().all():
-        st.session_state["orders_last_seen"] = int(df_view["updated_ms"].max())
-
-    st.caption(
-        f"🧾 Loaded {len(df_raw)} rows (showing {len(df_view)}) "
-        f"from last {tail} orders"
     )
