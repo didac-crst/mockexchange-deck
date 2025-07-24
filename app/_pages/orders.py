@@ -174,27 +174,79 @@ def render() -> None:
     # sort by Posted date, descending
     df_view = df_view.sort_values("Posted", ascending=False)
 
-    st.caption(f"🧾 Loaded {len(df_raw)} rows (showing {len(df_view)}) from last {tail} orders")
+    # ------------------------------------------------------------------ #
+    # 6½ · Row-highlighting for “fresh” updates                          #
+    # ------------------------------------------------------------------ #
 
+    # 1) keep helper col for Pandas to read in the styling callback
+    df_view["updated_ms"] = df["ts_update"].astype("Int64")
+
+    last_seen = st.session_state.get("orders_last_seen")
+
+    def _row_style(row: pd.Series) -> list[str]:
+        """Return CSS strings (one per cell) – pastel bg + black text for *new* rows."""
+        if (
+            last_seen is None
+            or pd.isna(row["updated_ms"])
+            or row["updated_ms"] <= last_seen
+        ):
+            return [""] * len(row)   # unchanged row → no styling
+
+        bg = {
+            "new":                 "#cce0ff",  # blue
+            "partially_filled":    "#fff4cc",  # yellow
+            "filled":              "#d4edda",  # green
+            "canceled":            "#f8d7da",  # red-ish
+            "partially_canceled":  "#f8d7da",
+            "rejected":            "#f8d7da",
+            "expired":             "#f8d7da",
+        }.get(row["Status"].lower().replace(" ", "_"), "")
+
+        style = f"background-color: {bg}; color: black" if bg else ""
+        return [style] * len(row)
+
+    styler = (
+        df_view.style
+            .apply(_row_style, axis=1)
+            .hide(axis="index")                 # hide the numeric index
+            .hide(axis="columns", subset=["updated_ms"])   #  <-- tell it “column”
+    )
+
+    # ------------------------------------------------------------------ #
+    # 7 · Streamlit interactive table                                    #
+    # ------------------------------------------------------------------ #
     st.dataframe(
-        df_view,
-        hide_index=True,
+        styler,                     # <-- pass the Styler directly!
+        use_container_width=True,
         column_config={
-            "Order ID":        st.column_config.TextColumn("Order ID"),
-            "Asset":           st.column_config.TextColumn("Asset"),
-            "Side":            st.column_config.TextColumn("Side"),
-            "Type":            st.column_config.TextColumn("Type"),
-            "Status":          st.column_config.TextColumn("Status"),
-            "Posted":          st.column_config.DatetimeColumn("Posted", format="YYYY-MM-DD HH:mm:ss"),
-            "Updated":        st.column_config.DatetimeColumn("Updated", format="YYYY-MM-DD HH:mm:ss"),
-            "Req. Qty":        st.column_config.TextColumn("Req. Qty"),
-            "Limit price":     st.column_config.TextColumn("Limit price"),
+            "Order ID":          st.column_config.TextColumn("Order ID"),
+            "Asset":             st.column_config.TextColumn("Asset"),
+            "Side":              st.column_config.TextColumn("Side"),
+            "Type":              st.column_config.TextColumn("Type"),
+            "Status":            st.column_config.TextColumn("Status"),
+            "Posted":            st.column_config.DatetimeColumn("Posted",
+                                                                format="YY-MM-DD HH:mm:ss"),
+            "Updated":           st.column_config.DatetimeColumn("Updated",
+                                                                format="YY-MM-DD HH:mm:ss"),
+            "Req. Qty":          st.column_config.TextColumn("Req. Qty"),
+            "Limit price":       st.column_config.TextColumn("Limit price"),
             "Reserved notional": st.column_config.TextColumn("Reserved notional"),
             "Reserved fee":      st.column_config.TextColumn("Reserved fee"),
-            "Filled Qty":      st.column_config.TextColumn("Filled Qty"),
-            "Actual notional":  st.column_config.TextColumn("Actual notional"),
-            "Actual fee":       st.column_config.TextColumn("Actual fee"),
-            "Exec. price":     st.column_config.TextColumn("Exec. price"),
-            "Exec. latency":   st.column_config.TextColumn("Exec. latency"),
+            "Filled Qty":        st.column_config.TextColumn("Filled Qty"),
+            "Actual notional":   st.column_config.TextColumn("Actual notional"),
+            "Actual fee":        st.column_config.TextColumn("Actual fee"),
+            "Exec. price":       st.column_config.TextColumn("Exec. price"),
+            "Exec. latency":     st.column_config.TextColumn("Exec. latency"),
         },
+    )
+
+    # ------------------------------------------------------------------ #
+    # 8 · Remember newest ts_update for next refresh                     #
+    # ------------------------------------------------------------------ #
+    if not df_view["updated_ms"].isna().all():
+        st.session_state["orders_last_seen"] = int(df_view["updated_ms"].max())
+
+    st.caption(
+        f"🧾 Loaded {len(df_raw)} rows (showing {len(df_view)}) "
+        f"from last {tail} orders"
     )
