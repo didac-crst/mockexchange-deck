@@ -72,10 +72,10 @@ def render() -> None:
         st.session_state[key] = kept
 
     # Build option lists once
-    status_opts = df_copy["status"].str.replace("_", " ").str.capitalize().unique().tolist()
-    side_opts   = df_copy["side"].str.upper().unique().tolist()
-    type_opts   = df_copy["type"].str.capitalize().unique().tolist()
-    asset_opts  = df_copy["Asset"].unique().tolist()
+    status_opts = sorted(df_copy["status"].str.replace("_", " ").str.capitalize().unique().tolist())
+    side_opts   = sorted(df_copy["side"].str.upper().unique().tolist())
+    type_opts   = sorted(df_copy["type"].str.capitalize().unique().tolist())
+    asset_opts  = sorted(df_copy["Asset"].unique().tolist())
 
     # Optional: reset when tail changed drastically (prevents stale selections)
     if st.session_state.get("_last_tail") != tail:
@@ -201,6 +201,10 @@ def render() -> None:
     # ------------------------------------------------------------------ #
 
 
+    df_view.sort_values("Updated", ascending=False, inplace=True)
+    df_view.reset_index(drop=True, inplace=True)
+
+
     def _row_style(row: pd.Series, *, fresh_window_s: int = 60) -> list[str]:
         """Return one CSS style per cell.
 
@@ -242,9 +246,6 @@ def render() -> None:
             .apply(_row_style, axis=1)
             # .hide(axis="index")                 # hide the numeric index
     )
-
-    df_view.sort_values("Updated", ascending=False, inplace=True)
-    df_view.reset_index(drop=True, inplace=True)
 
     # ------------------------------------------------------------------ #
     # 7 · Streamlit interactive table                                    #
