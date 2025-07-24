@@ -9,7 +9,7 @@ from ._helpers import _remove_small_zeros
 
 def render():
     st.set_page_config(page_title="Portfolio")   # browser tab + sidebar
-    st.title("Portfolio dashboard")           # big title inside the page
+    st.title("Portfolio")           # big title inside the page
     data = get_balance()
 
     if data["assets_df"].empty:

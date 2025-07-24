@@ -20,7 +20,7 @@ def _human_ts(ms: int | None) -> str:
 
 def render() -> None:
     st.set_page_config(page_title="Orders")
-    st.title("Orders dashboard")
+    st.title("Orders")
 
     FILTER_KEYS = ["status_filter", "side_filter", "type_filter", "asset_filter"]
 
@@ -43,7 +43,8 @@ def render() -> None:
 
     # ---------- 2 · Data massage -------------------------------------------
     df_copy = df_raw.copy()
-    df_copy["Posted"] = df_copy["ts_post"].map(_human_ts)
+    df_copy["Posted"] = df_copy["ts_create"].map(_human_ts)
+    df_copy["Updated"] = df_copy["ts_update"].map(_human_ts)
     df_copy[["Asset", "quote_asset"]] = df_copy["symbol"].str.split("/", expand=True)
 
     # ---------- 3 · Init & sync filter state --------------------------------
@@ -59,7 +60,7 @@ def render() -> None:
         st.session_state[key] = kept
 
     # Build option lists once
-    status_opts = df_copy["status"].str.capitalize().unique().tolist()
+    status_opts = df_copy["status"].str.replace("_", " ").str.capitalize().unique().tolist()
     side_opts   = df_copy["side"].str.upper().unique().tolist()
     type_opts   = df_copy["type"].str.capitalize().unique().tolist()
     asset_opts  = df_copy["Asset"].unique().tolist()
@@ -101,7 +102,7 @@ def render() -> None:
 
     # ---------- 5 · Apply mask ---------------------------------------------
     mask = (
-        df_copy["status"].str.capitalize().isin(status_sel)
+        df_copy["status"].str.replace("_", " ").str.capitalize().isin(status_sel)
         & df_copy["side"].str.upper().isin(side_sel)
         & df_copy["type"].str.capitalize().isin(type_sel)
         & df_copy["Asset"].isin(asset_sel)
@@ -109,17 +110,18 @@ def render() -> None:
     df = df_copy[mask].copy()
 
     # ---------- 6 · Rest of your logic (unchanged) --------------------------
-    ts_post_num = pd.to_numeric(df["ts_post"], errors="coerce")
-    ts_exec_num = pd.to_numeric(df["ts_exec"], errors="coerce")
+    ts_create_num = pd.to_numeric(df["ts_create"], errors="coerce")
+    ts_finish_num = pd.to_numeric(df["ts_finish"], errors="coerce")
+    ts_update_num = pd.to_numeric(df["ts_update"], errors="coerce")
     df["Exec. latency"] = (
-        (ts_exec_num - ts_post_num)
+        (ts_finish_num - ts_create_num)
         .div(1000)
         .round(2)
-        .where(ts_exec_num.notna(), "")
+        .where(ts_finish_num.notna(), "")
     )
 
     df["Req. Qty"]     = df["amount"].apply(lambda v: f"{v:,.6f}").apply(_remove_small_zeros)
-    df["Traded Qty"]   = df["filled"].apply(lambda v: f"{v:,.6f}" if pd.notna(v) else "").apply(_remove_small_zeros)
+    df["Filled Qty"]   = df["actual_filled"].apply(lambda v: f"{v:,.6f}" if pd.notna(v) else "").apply(_remove_small_zeros)
 
     df["Limit price"] = df.apply(
         lambda r: (
@@ -136,19 +138,20 @@ def render() -> None:
         axis=1
     )
 
-    df["Booked notional"] = df.apply(
-        lambda r: f"{r['booked_notion']:,.2f} {r['notion_currency']}" if pd.notna(r["booked_notion"]) else "",
+    df["Reserved notional"] = df.apply(
+        lambda r: f"{r['reserved_notion_left']:,.2f} {r['notion_currency']}" if pd.notna(r["reserved_notion_left"]) else "",
         axis=1
     )
-    df["Exec. notional"] = df.apply(
-        lambda r: f"{r['notion']:,.2f} {r['notion_currency']}" if pd.notna(r["notion"]) else "",
+    df["Actual notional"] = df.apply(
+        lambda r: f"{r['actual_notion']:,.2f} {r['notion_currency']}" if pd.notna(r["actual_notion"]) else "",
         axis=1,
     )
-    df["Booked fee"] = df.apply(
-        lambda r: f"{r['booked_fee']:,.2f} {r['fee_currency']}", axis=1
+    df["Reserved fee"] = df.apply(
+        lambda r: f"{r['reserved_fee_left']:,.2f} {r['fee_currency']}" if pd.notna(r["reserved_fee_left"]) else "",
+        axis=1
     )
-    df["Exec. fee"] = df.apply(
-        lambda r: f"{r['fee_cost']:,.2f} {r['fee_currency']}" if pd.notna(r["fee_cost"]) else "",
+    df["Actual fee"] = df.apply(
+        lambda r: f"{r['actual_fee']:,.2f} {r['fee_currency']}" if pd.notna(r["actual_fee"]) else "",
         axis=1,
     )
 
@@ -159,16 +162,17 @@ def render() -> None:
 
     df["Side"]   = df["side"].str.upper()
     df["Type"]   = df["type"].str.capitalize()
-    df["Status"] = df["status"].str.capitalize()
+    df["Status"] = df["status"].str.replace("_", " ").str.capitalize()
 
     df_view = df[
         [
-            "Posted", "Order ID", "Asset", "Side", "Type", "Status",
-            "Req. Qty", "Limit price", "Booked notional", "Booked fee",
-            "Traded Qty", "Exec. price", "Exec. notional", "Exec. fee",
-            "Exec. latency",
+            "Posted", "Order ID", "Updated", "Asset", "Side", "Status", "Type", "Limit price",
+            "Exec. price", "Req. Qty", "Filled Qty", "Reserved notional", "Actual notional",
+            "Reserved fee", "Actual fee", "Exec. latency",
         ]
     ]
+    # sort by Posted date, descending
+    df_view = df_view.sort_values("Posted", ascending=False)
 
     st.caption(f"🧾 Loaded {len(df_raw)} rows (showing {len(df_view)}) from last {tail} orders")
 
@@ -182,14 +186,15 @@ def render() -> None:
             "Type":            st.column_config.TextColumn("Type"),
             "Status":          st.column_config.TextColumn("Status"),
             "Posted":          st.column_config.DatetimeColumn("Posted", format="YYYY-MM-DD HH:mm:ss"),
+            "Updated":        st.column_config.DatetimeColumn("Updated", format="YYYY-MM-DD HH:mm:ss"),
             "Req. Qty":        st.column_config.TextColumn("Req. Qty"),
             "Limit price":     st.column_config.TextColumn("Limit price"),
-            "Booked notional": st.column_config.TextColumn("Booked notional"),
-            "Booked fee":      st.column_config.TextColumn("Booked fee"),
-            "Traded Qty":      st.column_config.TextColumn("Traded Qty"),
+            "Reserved notional": st.column_config.TextColumn("Reserved notional"),
+            "Reserved fee":      st.column_config.TextColumn("Reserved fee"),
+            "Filled Qty":      st.column_config.TextColumn("Filled Qty"),
+            "Actual notional":  st.column_config.TextColumn("Actual notional"),
+            "Actual fee":       st.column_config.TextColumn("Actual fee"),
             "Exec. price":     st.column_config.TextColumn("Exec. price"),
-            "Exec. notional":  st.column_config.TextColumn("Exec. notional"),
-            "Exec. fee":       st.column_config.TextColumn("Exec. fee"),
             "Exec. latency":   st.column_config.TextColumn("Exec. latency"),
         },
     )
