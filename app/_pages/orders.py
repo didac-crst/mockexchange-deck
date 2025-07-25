@@ -56,12 +56,23 @@ def render() -> None:
     # ── 1 · Global “Filters” expander ───────────────────────────────────
     filters_expander = st.expander("Filters", expanded=False)
     with filters_expander:
-        # Number of most-recent orders to fetch before *any* other widget
-        tail = st.slider("Max number of last orders to load",
-                         min_value=SLIDER_MIN, max_value=SLIDER_MAX, value=SLIDER_DEFAULT, step=SLIDER_STEP,
-                         key="tail_slider")
+        # Toggle ON to unlimit the number of orders fetched
+        limit_toggle = st.checkbox("Fetch the whole order book", value=False, key="limit_toggle")
+
+        if limit_toggle:
+            tail = None  # fetch everything
+        else:
+            tail = st.slider(
+                "Max number of last orders to load",
+                min_value=SLIDER_MIN,
+                max_value=SLIDER_MAX,
+                value=SLIDER_DEFAULT,
+                step=SLIDER_STEP,
+                key="tail_slider",
+            )
 
     # ── 2 · Fetch & massage raw data ────────────────────────────────────
+    # if tail is None, get_orders should fetch all orders
     df_raw = get_orders(tail=tail)
     if df_raw.empty:
         st.info("No orders found.")
@@ -133,8 +144,14 @@ def render() -> None:
     )
     df = df_copy[mask].copy()
 
-    st.caption(f"🧾 Loaded {len(df_raw)} rows (showing {len(df)}) "
-               f"from last {tail} orders")
+    # Caption with the number of rows loaded
+    # and how many are shown in the table
+    if tail is not None:
+        st.caption(f"🧾 Loaded {len(df_raw)} rows (showing {len(df)}) "
+                f"from last {tail} orders")
+    else:
+        st.caption(f"🧾 Loaded {len(df_raw)} rows (showing {len(df)}) "
+                f"from the whole order book")
 
     # ── 6 · Derive human-readable / numeric helper columns ──────────────
     ts_create_num = pd.to_numeric(df["ts_create"], errors="coerce")
