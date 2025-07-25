@@ -16,7 +16,7 @@ requests = "^2.32"
 python-dotenv = "^1.0"
 plotly = "^5.22"
 pydantic = "^2.7"
-streamlit-aggrid = "^0.4.0"
+streamlit-aggrid = "0.3.*"
 
 [tool.poetry.group.dev.dependencies]
 black = "^24.3"
