@@ -3,6 +3,9 @@
 import streamlit as st
 from streamlit_autorefresh import st_autorefresh
 
+# 1) Wide layout must be set before any other st calls:
+st.set_page_config(page_title="MockExchange Dashboard", layout="wide", initial_sidebar_state="expanded")
+
 from app.config import settings
 from app._pages import portfolio, orders, order_details
 
