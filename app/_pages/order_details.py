@@ -57,13 +57,13 @@ def _human_ts(ms: int | None) -> str:
 def render(order_id: str) -> None:
     # ── “Back” button ────────────────────────────────────────────────────────
     if st.button("← Back to Orders"):
-        # 1) unset the order_id so main.py will go into the `else` branch
-        st.experimental_set_query_params(order_id=None)
-        # 2) force the sidebar radio back to "Orders"
-        st.session_state["sidebar_page"] = "Orders"
-        st.experimental_rerun()
+        # Remove the order_id key from the URL query params
+        if "order_id" in st.query_params:
+            del st.query_params["order_id"]           # 👉 set-query-param via assignment  [oai_citation:0‡Streamlit](https://discuss.streamlit.io/t/how-do-i-use-st-query-params/63123?utm_source=chatgpt.com)
+        # Re-run so that main.py sees no order_id and shows Orders again
+        st.rerun()
 
-    # Fetch
+    # Fetch from API
     url = f"{API_BASE}/orders/{order_id}?include_history=true"
     try:
         resp = requests.get(url, timeout=10)

@@ -15,7 +15,10 @@ st_autorefresh(interval=settings()["REFRESH_SECONDS"] * 1000, key="refresh")
 
 # # Grab URL params early
 params = st.query_params
-oid = params.get("order_id", [""])
+oid = params.get("order_id", None)
+_page = params.get("page", None) # Override if provided
+if _page:
+    page = _page
 
 # If an order_id is in the URL, show its details
 if oid:

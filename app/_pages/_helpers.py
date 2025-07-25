@@ -20,8 +20,8 @@ def _add_history_column(
         base_url: str,
         *,
         order_id_col: str = "id",
-        new_col: str = "History",
-        path_template: str = "/orders/{oid}/history",
+        new_col: str = "Details",
+        path_template: str = "?order_id={oid}&page=Orders",
     ) -> pd.DataFrame:
     """
     Return a copy of `df` with a new column `new_col` whose values are

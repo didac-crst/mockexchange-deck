@@ -5,10 +5,10 @@ import pandas as pd
 
 _STATUS_LIGHT = {
     "new":                "🟣",   # purple
-    "partially filled":   "🔵",   # blue
+    "partially_filled":   "🔵",   # blue
     "filled":             "🟢",   # green
     "canceled":           "🔴",   # red
-    "partially canceled": "🔴",
+    "partially_canceled": "🔴",
     "rejected":           "🔴",
     "expired":            "🔴",
 }

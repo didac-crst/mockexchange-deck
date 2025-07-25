@@ -73,18 +73,13 @@ def render() -> None:
 
     # ── 2 · Fetch & massage raw data ────────────────────────────────────
     # if tail is None, get_orders should fetch all orders
-    df_raw = get_orders(tail=tail)
+
+    # new: pick up your base‐URL from env (or default)
+    base = os.getenv("UI_URL", "http://localhost:8000")
+    df_raw = get_orders(tail=tail).pipe(_add_history_column, base_url=base)
     if df_raw.empty:
         st.info("No orders found.")
         return
-
-    # new: pick up your base‐URL from env (or default)
-    base = os.getenv("API_URL", "http://localhost:8000")
-    df_raw = _add_history_column(
-        df_raw,
-        base_url=base,
-        path_template="/orders/{oid}/history",
-    )
 
     df_copy = df_raw.copy()
     df_copy["Posted"]  = df_copy["ts_create"].map(_human_ts)
@@ -218,7 +213,7 @@ def render() -> None:
         ["Order ID", "Posted", "Updated", "Asset", "Side", "Status", "Type",
          "Limit price", "Exec. price", "Req. Qty", "Filled Qty",
          "Reserved notional", "Actual notional",
-         "Reserved fee", "Actual fee", "Exec. latency", "History"]
+         "Reserved fee", "Actual fee", "Exec. latency", "Details"]
     ].sort_values("Updated", ascending=False).reset_index(drop=True)
 
     # # ── 6½ · Row-level highlighting for *fresh* updates ─────────────────
@@ -241,28 +236,6 @@ def render() -> None:
     )
 
     # ── 7 · Show the table ──────────────────────────────────────────────
-    # right after you build df_view…
-    # Build a quick lookup from URL → status
-    # 1️⃣ Build a dict mapping each raw URL → the status you want shown
-    url2status = dict(zip(df_view["History"], df_view["Status"]))
-
-    # 2) wrap it so JS won’t choke
-    class DisplayMap(dict):
-        def startswith(self, prefix, *args):
-            return False
-        def startsWith(self, prefix, *args):  # JavaScript-friendly
-            return False
-
-    display_map = DisplayMap(url2status)
-
-    # 3) now construct your LinkColumn
-    history_link_col = st.column_config.LinkColumn(
-        label="History",
-        display_text=display_map,
-        max_chars=0,
-        help="Open order history in a new tab",
-    )
-
 
     st.dataframe(
         styler,
@@ -289,6 +262,11 @@ def render() -> None:
             "Exec. price":       st.column_config.TextColumn("Exec. price"),
             "Exec. latency":     st.column_config.TextColumn("Exec. latency"),
             # render the URL as a clickable link
-            "History": history_link_col,
+            "Details": st.column_config.LinkColumn(
+                label="Details",
+                display_text="🔍",    # fixed magnifier emoji
+                max_chars=1,          # don’t truncate your emoji!
+                help="View order details",
+            ),
         },
     )
