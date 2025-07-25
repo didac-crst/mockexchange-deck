@@ -40,6 +40,11 @@ def render():
         pie_df.loc[len(pie_df)] = {"asset": "Other", "value": other}
 
     fig = px.pie(pie_df, names="asset", values="value", hole=0.4)
+    fig.update_layout(
+        autosize=True,       # let Plotly fill container width
+        height=600,          # fixed height in pixels
+        margin=dict(t=40, b=40, l=40, r=40),
+    )
     st.plotly_chart(fig, use_container_width=True)
 
     # ── 4 · Pretty table (add thousand-sep strings, right-align) --------------
@@ -59,6 +64,8 @@ def render():
     st.dataframe(
         df_disp,
         hide_index=True,
+        use_container_width=True,
+        height=600,
         column_order=["asset","free","used","total","quote_price","value","share"],
         column_config={
             "asset": st.column_config.TextColumn("Asset"),
