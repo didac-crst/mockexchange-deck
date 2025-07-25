@@ -1,3 +1,4 @@
+# _helpers.py
 
 def _remove_small_zeros(num_str: str) -> str:
     """A number on a string, formatted to 6 decimal places.

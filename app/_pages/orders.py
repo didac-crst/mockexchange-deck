@@ -1,3 +1,5 @@
+# orders.py
+
 import pandas as pd
 import streamlit as st
 import time
@@ -5,28 +7,18 @@ from datetime import datetime, timezone
 
 from app.services.api import get_orders
 from ._helpers import _remove_small_zeros
+from ._row_colors import _row_style
 
 
 # ────────────────────────────────────────────────────────────────────────
 # Constants & one-off helpers
 # ────────────────────────────────────────────────────────────────────────
-FRESH_WINDOW_S = 60  # seconds
+FRESH_WINDOW_S = 30  # seconds
+N_VISUAL_DEGRADATIONS = 10  # how many levels of color degradation to create
 SLIDER_MIN = 10
 SLIDER_MAX = 5000
 SLIDER_STEP = 10
 SLIDER_DEFAULT = 100
-
-_BG = {
-    # Status → pastel background for recently-changed rows
-    "new":                 "#0073ff",  # blue
-    "partially_filled":    "#ffcc00",  # yellow
-    "filled":              "#00cc00",  # green
-    "canceled":            "#ff4040",  # red
-    "partially_canceled":  "#ff4040",
-    "rejected":            "#ff4040",
-    "expired":             "#ff4040",
-}
-
 
 def _human_ts(ms: int | None) -> str:
     """
@@ -202,31 +194,16 @@ def render() -> None:
          "Reserved fee", "Actual fee", "Exec. latency"]
     ].sort_values("Updated", ascending=False).reset_index(drop=True)
 
-    # ── 6½ · Row-level highlighting for *fresh* updates ─────────────────
-    def _row_style(row: pd.Series, *, fresh_window_s: int = FRESH_WINDOW_S) -> list[str]:
-        """
-        Style callback for ``DataFrame.style.apply``
-
-        If **Updated** is within *fresh_window_s* seconds from “now” colour the
-        row by its status, otherwise leave it unstyled.
-        """
-        try:
-            t_update = (
-                row["Updated"].timestamp()
-                if isinstance(row["Updated"], pd.Timestamp)
-                else pd.to_datetime(row["Updated"], errors="coerce").timestamp()
+    # # ── 6½ · Row-level highlighting for *fresh* updates ─────────────────
+    styler = (
+        df_view.style
+            .apply(
+                _row_style,
+                axis=1,
+                levels=N_VISUAL_DEGRADATIONS,
+                fresh_window_s=FRESH_WINDOW_S,
             )
-        except Exception:
-            t_update = None
-
-        if t_update is None or (time.time() - t_update) > fresh_window_s:
-            return [""] * len(row)
-
-        bg = _BG.get(str(row["Status"]).lower().replace(" ", "_"), "")
-        return [f"background-color:{bg};color:black" if bg else ""] * len(row)
-
-    styler = df_view.style.apply(_row_style, axis=1)
-    #   Index left visible – users often want a stable numeric row id
+    )
 
     # ── 7 · Show the table ──────────────────────────────────────────────
     st.dataframe(
