@@ -59,7 +59,8 @@ def render(order_id: str) -> None:
     if st.button("← Back to Orders"):
         # Remove the order_id key from the URL query params
         if "order_id" in st.query_params:
-            del st.query_params["order_id"]           # 👉 set-query-param via assignment  [oai_citation:0‡Streamlit](https://discuss.streamlit.io/t/how-do-i-use-st-query-params/63123?utm_source=chatgpt.com)
+            del st.query_params["order_id"]
+            # st.query_params["page"] = "Orders"  # Ensure we show the Orders page
         # Re-run so that main.py sees no order_id and shows Orders again
         st.rerun()
 
@@ -176,25 +177,25 @@ def render(order_id: str) -> None:
 
     # Format numbers
     fmt = lambda v: _remove_small_zeros(f"{v:,.6f}")
-    fmt2 = lambda v: f"{v:,.2f}"
-    fmt4 = lambda v: f"{v:,.4f}"
+    fmt_notion = lambda v: f"{v:,.2f} {data.get('notion_currency')}"
+    fmt_fee = lambda v: f"{v:,.4f} {data.get('fee_currency')}"
 
     col1, col2, col3 = st.columns(3)
 
     with col1:
-        st.metric("Asset ▶ Initial requested",     fmt(initial_amount))
+        st.metric("Asset ▶ Initial requested",  fmt(initial_amount))
         st.metric("Asset ▶ Actual filled",      fmt(filled_amount))
-        st.metric("Asset ▶ Missing",   fmt(remaining_amount))
+        st.metric("Asset ▶ Missing",            fmt(remaining_amount))
 
     with col2:
-        st.metric("Notional ▶ Initial booked",  fmt2(initial_notion))
-        st.metric("Notional ▶ Actual paid",   fmt2(actual_notion))
-        st.metric("Notional ▶ Remaining",fmt2(remaining_notion))
+        st.metric("Notional ▶ Initial booked",  fmt_notion(initial_notion))
+        st.metric("Notional ▶ Actual paid",     fmt_notion(actual_notion))
+        st.metric("Notional ▶ Remaining",       fmt_notion(remaining_notion))
 
     with col3:
-        st.metric("Fee ▶ Initial booked",       fmt4(initial_fee))
-        st.metric("Fee ▶ Actual paid",                fmt4(actual_fee))
-        st.metric("Fee ▶ Remaining",     fmt4(remaining_fee))
+        st.metric("Fee ▶ Initial booked",       fmt_fee(initial_fee))
+        st.metric("Fee ▶ Actual paid",          fmt_fee(actual_fee))
+        st.metric("Fee ▶ Remaining",            fmt_fee(remaining_fee))
 
     st.markdown("---")
 

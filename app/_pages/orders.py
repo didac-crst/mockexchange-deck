@@ -8,7 +8,7 @@ from pathlib import Path
 from dotenv import load_dotenv
 
 from app.services.api import get_orders
-from ._helpers import _remove_small_zeros, _add_history_column
+from ._helpers import _remove_small_zeros, _add_details_column
 from ._row_colors import _row_style
 
 load_dotenv(Path(__file__).parent.parent.parent / ".env")
@@ -47,6 +47,11 @@ def render() -> None:
     * Display the table with Streamlit’s dataframe component.
     * Highlight rows that changed in the **last 60 s** to draw attention.
     """
+    # params = st.query_params
+    # _page = params.get("page", None) # Override if provided
+    # if _page:
+    #     del st.query_params["page"]
+
     st.set_page_config(page_title="Orders")
     st.title("Orders")
 
@@ -76,7 +81,7 @@ def render() -> None:
 
     # new: pick up your base‐URL from env (or default)
     base = os.getenv("UI_URL", "http://localhost:8000")
-    df_raw = get_orders(tail=tail).pipe(_add_history_column, base_url=base)
+    df_raw = get_orders(tail=tail).pipe(_add_details_column, base_url=base)
     if df_raw.empty:
         st.info("No orders found.")
         return
@@ -217,18 +222,9 @@ def render() -> None:
     ].sort_values("Updated", ascending=False).reset_index(drop=True)
 
     # # ── 6½ · Row-level highlighting for *fresh* updates ─────────────────
-    # styler = (
-    #     df_view.style
-    #         .apply(
-    #             _row_style,
-    #             axis=1,
-    #             levels=N_VISUAL_DEGRADATIONS,
-    #             fresh_window_s=FRESH_WINDOW_S,
-    #         )
-    # )
-
     styler = (
         df_view.style
+            .format({"Details": lambda html: html}, escape="html")
             .apply(_row_style,
                    axis=1,
                    levels=N_VISUAL_DEGRADATIONS,

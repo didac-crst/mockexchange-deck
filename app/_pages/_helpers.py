@@ -15,13 +15,14 @@ def _remove_small_zeros(num_str: str) -> str:
         return num_str
 
 
-def _add_history_column(
+def _add_details_column(
         df: pd.DataFrame,
         base_url: str,
         *,
         order_id_col: str = "id",
         new_col: str = "Details",
         path_template: str = "?order_id={oid}&page=Orders",
+        text = "🔍"
     ) -> pd.DataFrame:
     """
     Return a copy of `df` with a new column `new_col` whose values are
@@ -49,9 +50,8 @@ def _add_history_column(
         `<a href=…>` strings.
     """
     df = df.copy()
-
+    # use a *relative* link → stays in the same tab
     def make_url(oid: str) -> str:
-        return base_url.rstrip("/") + path_template.format(oid=oid)
-
+        return path_template.format(oid=oid)        #  e.g.  "?order_id=123&page=Orders"
     df[new_col] = df[order_id_col].astype(str).map(make_url)
     return df
