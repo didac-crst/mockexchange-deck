@@ -1,14 +1,29 @@
+# app/main.py
+
 import streamlit as st
 from streamlit_autorefresh import st_autorefresh
+
 from app.config import settings
-from app._pages import orders, portfolio
+from app._pages import portfolio, orders, order_details
 
+# Sidebar navigation
 st.sidebar.title("MockExchange")
-page = st.sidebar.radio("Navigate", ("Portfolio", "Orders"))
+page = st.sidebar.radio("Navigate", ("Portfolio", "Orders"), key="sidebar_page")
 
+# Auto-refresh every N seconds
 st_autorefresh(interval=settings()["REFRESH_SECONDS"] * 1000, key="refresh")
 
-if page == "Portfolio":
-    portfolio.render()
-elif page == "Orders":
-    orders.render()
+# # Grab URL params early
+params = st.query_params
+oid = params.get("order_id", [""])
+
+# If an order_id is in the URL, show its details
+if oid:
+    order_details.render(order_id=oid)
+
+# Otherwise show the selected page
+else:
+    if page == "Portfolio":
+        portfolio.render()
+    else:  # page == "Orders"
+        orders.render()

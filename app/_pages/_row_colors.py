@@ -3,6 +3,16 @@
 import time
 import pandas as pd
 
+_STATUS_LIGHT = {
+    "new":                "🟣",   # purple
+    "partially filled":   "🔵",   # blue
+    "filled":             "🟢",   # green
+    "canceled":           "🔴",   # red
+    "partially canceled": "🔴",
+    "rejected":           "🔴",
+    "expired":            "🔴",
+}
+
 _BG0 = {
     "new":                 "#aa55ff",  # purple
     "partially_filled":    "#11AAFF",  # blue
