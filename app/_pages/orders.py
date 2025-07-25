@@ -2,23 +2,26 @@
 
 import pandas as pd
 import streamlit as st
-import time
+import time, os
 from datetime import datetime, timezone
+from pathlib import Path
+from dotenv import load_dotenv
 
 from app.services.api import get_orders
 from ._helpers import _remove_small_zeros
 from ._row_colors import _row_style
 
+load_dotenv(Path(__file__).parent.parent.parent / ".env")
 
 # ────────────────────────────────────────────────────────────────────────
 # Constants & one-off helpers
 # ────────────────────────────────────────────────────────────────────────
-FRESH_WINDOW_S = 30  # seconds
-N_VISUAL_DEGRADATIONS = 10  # how many levels of color degradation to create
-SLIDER_MIN = 10
-SLIDER_MAX = 5000
-SLIDER_STEP = 10
-SLIDER_DEFAULT = 100
+FRESH_WINDOW_S = int(os.getenv("FRESH_WINDOW_S", 300))  # 5 minutes
+N_VISUAL_DEGRADATIONS = int(os.getenv("N_VISUAL_DEGRADATIONS", 12))
+SLIDER_MIN = int(os.getenv("SLIDER_MIN", 10))
+SLIDER_MAX = int(os.getenv("SLIDER_MAX", 1000))
+SLIDER_STEP = int(os.getenv("SLIDER_STEP", 10))
+SLIDER_DEFAULT = int(os.getenv("SLIDER_DEFAULT", 100))
 
 def _human_ts(ms: int | None) -> str:
     """
