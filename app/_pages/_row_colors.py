@@ -7,8 +7,8 @@ _STATUS_LIGHT = {
     "new":                "🟣",   # purple
     "partially_filled":   "🔵",   # blue
     "filled":             "🟢",   # green
+    "partially_canceled": "🟡",   # yellow
     "canceled":           "🔴",   # red
-    "partially_canceled": "🔴",
     "rejected":           "🔴",
     "expired":            "🔴",
 }
@@ -17,8 +17,8 @@ _BG0 = {
     "new":                 "#aa55ff",  # purple
     "partially_filled":    "#11AAFF",  # blue
     "filled":              "#00ff00",  # green
+    "partially_canceled":  "#fff700",  # yellow
     "canceled":            "#ff5555",  # red
-    "partially_canceled":  "#ff5555",
     "rejected":            "#ff5555",
     "expired":             "#ff5555",
 }
