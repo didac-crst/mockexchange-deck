@@ -53,5 +53,6 @@ def _add_details_column(
     # use a *relative* link → stays in the same tab
     def make_url(oid: str) -> str:
         return path_template.format(oid=oid)        #  e.g.  "?order_id=123&page=Orders"
-    df[new_col] = df[order_id_col].astype(str).map(make_url)
+    if not df.empty:
+        df[new_col] = df[order_id_col].astype(str).map(make_url)
     return df
