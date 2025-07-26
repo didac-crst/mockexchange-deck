@@ -54,7 +54,14 @@ def _human_ts(ms: int | None) -> str:
     dt = datetime.fromtimestamp(ms/1000, tz=timezone.utc).astimezone()
     return dt.strftime("%Y-%m-%d %H:%M:%S")
 
+
 def render(order_id: str) -> None:
+
+    # Format numbers
+    fmt = lambda v: _remove_small_zeros(f"{v:,.6f}")
+    fmt_notion = lambda v: f"{v:,.2f} {data.get('notion_currency')}"
+    fmt_fee = lambda v: f"{v:,.4f} {data.get('fee_currency')}"
+
     # ── “Back” button ────────────────────────────────────────────────────────
     if st.button("← Back to Order Book"):
         # Remove the order_id key from the URL query params
@@ -89,13 +96,13 @@ def render(order_id: str) -> None:
     status_light = _STATUS_LIGHT.get(_status, "⚪")  # default to white circle
     status = _status.replace("_", " ").capitalize()
     type_info = (
-        f"{data.get('type').capitalize()} [{data.get('limit_price',0):.2f} {data.get('notion_currency')}]" if data.get("type") == "limit" else data.get("type").capitalize()
+        f"{data.get('type').capitalize()} [{fmt(data.get('limit_price',0))} {data.get('notion_currency')}]" if data.get("type") == "limit" else data.get("type").capitalize()
     )
     _price = data.get("price", 0)
     if _price is None or _price == 0:
         price = None
     else:
-        price = f"{data.get('price', 0):,.2f} {data.get('notion_currency')}"
+        price = f"{fmt(data.get('price', 0))} {data.get('notion_currency')}"
 
     placed_ts  = _human_ts(data.get("ts_create"))
     updated_ts = _human_ts(data.get("ts_update"))
@@ -177,11 +184,6 @@ def render(order_id: str) -> None:
     initial_fee       = data.get("initial_booked_fee", 0)
     actual_fee        = data.get("actual_fee", 0)
     remaining_fee     = data.get("reserved_fee_left", 0)
-
-    # Format numbers
-    fmt = lambda v: _remove_small_zeros(f"{v:,.6f}")
-    fmt_notion = lambda v: f"{v:,.2f} {data.get('notion_currency')}"
-    fmt_fee = lambda v: f"{v:,.4f} {data.get('fee_currency')}"
 
     col1, col2, col3 = st.columns(3)
 
