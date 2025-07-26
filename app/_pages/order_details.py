@@ -189,13 +189,14 @@ def render(order_id: str) -> None:
 
     with col2:
         st.metric("Notional ▶ Initial booked",  fmt_notion(initial_notion))
-        st.metric("Notional ▶ Actual paid",     fmt_notion(actual_notion))
-        st.metric("Notional ▶ Remaining",       fmt_notion(remaining_notion))
+        actual_str = f"Notional ▶ {'Actual paid' if side == 'BUY' else 'Actual received'}"
+        st.metric(actual_str,     fmt_notion(actual_notion))
+        st.metric("Notional ▶ Still booked",       fmt_notion(remaining_notion))
 
     with col3:
         st.metric("Fee ▶ Initial booked",       fmt_fee(initial_fee))
         st.metric("Fee ▶ Actual paid",          fmt_fee(actual_fee))
-        st.metric("Fee ▶ Remaining",            fmt_fee(remaining_fee))
+        st.metric("Fee ▶ Still booked",            fmt_fee(remaining_fee))
 
     st.markdown("---")
 
