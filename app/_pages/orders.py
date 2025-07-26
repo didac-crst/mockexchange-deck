@@ -52,11 +52,29 @@ def render() -> None:
     # if _page:
     #     del st.query_params["page"]
 
-    st.set_page_config(page_title="Orders")
-    st.title("Orders")
+    st.set_page_config(page_title="Order Book")
+    st.title("Order Book")
+
+    # 0) --- add a toggle for “reset filters on every reload” ----
+    reset_on_reload = st.sidebar.checkbox(
+        "Reset filters on refresh",
+        value=False,
+        key="reset_on_reload"
+    )
+
+    # track the last seen refresh tick
+    curr_tick = st.session_state.get("refresh", 0)
+    last_tick = st.session_state.get("_last_refresh_tick", None)
 
     # Keys we store in st.session_state for filter persistence
     FILTER_KEYS = ["status_filter", "side_filter", "type_filter", "asset_filter"]
+
+    # 1) if toggle is on *and* this is a new auto‐refresh, drop all FILTER_KEYS
+    if reset_on_reload and last_tick is not None and curr_tick != last_tick:
+        for k in FILTER_KEYS:
+            st.session_state.pop(k, None)
+    # 2) store the tick for the next run
+    st.session_state["_last_refresh_tick"] = curr_tick
 
     # ── 1 · Global “Filters” expander ───────────────────────────────────
     filters_expander = st.expander("Filters", expanded=False)
