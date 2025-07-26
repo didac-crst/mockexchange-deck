@@ -58,7 +58,7 @@ def render() -> None:
     # 0) --- add a toggle for “reset filters on every reload” ----
     reset_on_reload = st.sidebar.checkbox(
         "Reset filters on refresh",
-        value=False,
+        value=True,
         key="reset_on_reload"
     )
 
@@ -99,6 +99,7 @@ def render() -> None:
 
     # new: pick up your base‐URL from env (or default)
     base = os.getenv("UI_URL", "http://localhost:8000")
+
     df_raw = get_orders(tail=tail).pipe(_add_details_column, base_url=base)
     if df_raw.empty:
         st.info("No orders found.")
@@ -251,11 +252,15 @@ def render() -> None:
 
     # ── 7 · Show the table ──────────────────────────────────────────────
 
+    height_calc = 35 * (1+len(df_view)) + 5
+    if height_calc > 800:
+        height_calc = 800
+
     st.dataframe(
         styler,
         hide_index=True,
         use_container_width=True,
-        height=800,   # ~25 rows on FHD
+        height=height_calc,
         column_config={
             "Order ID":          st.column_config.TextColumn("Order ID"),
             "Asset":             st.column_config.TextColumn("Asset"),

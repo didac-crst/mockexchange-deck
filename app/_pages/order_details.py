@@ -56,7 +56,7 @@ def _human_ts(ms: int | None) -> str:
 
 def render(order_id: str) -> None:
     # ── “Back” button ────────────────────────────────────────────────────────
-    if st.button("← Back to Orders"):
+    if st.button("← Back to Order Book"):
         # Remove the order_id key from the URL query params
         if "order_id" in st.query_params:
             del st.query_params["order_id"]

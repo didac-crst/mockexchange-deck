@@ -23,7 +23,7 @@ oid = params.get("order_id", None)
 
 page = st.sidebar.radio(
         "Navigate",
-        ("Portfolio", "Orders"),
+        ("Portfolio", "Order Book"),
         index=default_idx,          # pre-select “Orders”
         key="sidebar_page",
 )
