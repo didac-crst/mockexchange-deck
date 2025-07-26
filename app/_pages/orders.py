@@ -234,10 +234,9 @@ def render() -> None:
     df["Status"] = df["status"].str.replace("_", " ").str.capitalize()
 
     df_view = df[
-        ["Order ID", "Posted", "Updated", "Asset", "Side", "Status", "Type",
-         "Limit price", "Exec. price", "Req. Qty", "Filled Qty",
-         "Reserved notional", "Actual notional",
-         "Reserved fee", "Actual fee", "Exec. latency", "Details"]
+        ["Details", "Order ID", "Posted", "Updated", "Asset", "Side", "Status", "Type",
+         "Limit price", "Exec. price", "Req. Qty", "Filled Qty", "Reserved notional",
+         "Actual notional", "Reserved fee", "Actual fee", "Exec. latency"]
     ].sort_values("Updated", ascending=False).reset_index(drop=True)
 
     # # ── 6½ · Row-level highlighting for *fresh* updates ─────────────────
@@ -282,7 +281,7 @@ def render() -> None:
             "Exec. latency":     st.column_config.TextColumn("Exec. latency"),
             # render the URL as a clickable link
             "Details": st.column_config.LinkColumn(
-                label="Details",
+                label=" ",
                 display_text="🔍",    # fixed magnifier emoji
                 max_chars=1,          # don’t truncate your emoji!
                 help="View order details",
