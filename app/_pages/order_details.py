@@ -74,8 +74,11 @@ def render(order_id: str) -> None:
         st.error(f"Could not load history:\n```\n{exc}\n```")
         return
 
-    if not data:
-        st.info("No history found for this order.")
+    data_keys = list(data.keys())
+    # If order not found, there is a dict with an "error" key
+    if "error" in data_keys:
+        st.info("No history found for order ID "
+                f"{order_id} - Probably it has been pruned.")
         return
 
     # ── 0) Prepare data ───────────────────────────────────────────────────
