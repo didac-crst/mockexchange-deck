@@ -6,7 +6,7 @@ import plotly.express as px
 import streamlit as st
 from app.services.api import get_balance
 
-from ._helpers import _remove_small_zeros
+from ._helpers import _remove_small_zeros, _display_advanced_details
 
 
 def render():
@@ -18,9 +18,27 @@ def render():
         st.info("No equity or assets found.")
         return
 
+    # -- Sidebar filters --------------------------------------------------------
+    st.sidebar.header("Filters")
+    advanced_display = st.sidebar.checkbox(
+        "Display advanced details",
+        value=False,
+        key="advanced_display"
+    )
+    if advanced_display:
+        st.sidebar.info(
+            "Advanced details include total/free/used amounts, "
+            "for both cash and assets comparing portfolio and order book sources."
+        )
+
     # ── 1. Equity metric ────────────────────────────────────────────────────
-    equity_str = f"{data['equity']:,.2f} {data['quote_asset']}"
-    st.metric("Total equity", equity_str)
+    # Layout in three columns of big numbers/text
+
+    if not advanced_display:
+        equity_str = f"{data['equity']:,.2f} {data['quote_asset']}"
+        st.metric("Equity", equity_str)
+    else:
+        _display_advanced_details()
 
     # ── 2 · Build tidy numeric DataFrame ──────────────────────────────────────
     df = data["assets_df"].copy()

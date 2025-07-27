@@ -119,6 +119,17 @@ def get_active_asset_count() -> int:
     """Thin helper for places that only need the tally shown by `/balance/list`."""
     return _get("/balance/list")["count"]
 
+def get_assets_overview() -> dict:
+    """Fetch `/balance/list` endpoint and return a dict with:
+    - count: number of active assets
+    - equity: total value in quote asset
+    - quote_asset: the quote asset symbol (e.g. USDT)
+    """
+    summary = _get("/overview/assets")
+    if not isinstance(summary, dict):
+        raise TypeError(f"Expected dict from /overview/assets, got {type(summary)}")
+    return summary
+
 def get_orders(status: str | None = None, tail: int = 50) -> pd.DataFrame:
     """
     Fetch recent orders from `/orders` endpoint and return a tidy DataFrame.
