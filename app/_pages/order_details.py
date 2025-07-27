@@ -167,6 +167,18 @@ def render(order_id: str) -> None:
                 delta=None,
                 delta_color="off",
             )
+        else:
+            if st.button("Cancel Order"):
+                # Cancel the order via API
+                cancel_url = f"{API_BASE}/orders/{order_id}/cancel"
+                try:
+                    cancel_resp = requests.post(cancel_url, timeout=10)
+                    cancel_resp.raise_for_status()
+                    st.success("Order cancelled successfully.")
+                    # Re-run to show the updated status
+                    st.rerun()
+                except Exception as exc:
+                    st.error(f"Could not cancel order:\n```\n{exc}\n```")
     st.markdown("---")
 
     # ── Compact summary grid ───────────────────────────────────────────────
