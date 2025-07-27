@@ -65,26 +65,17 @@ def render() -> None:
         )
         _display_advanced_details()
 
-    # 0) --- add a toggle for “reset filters on every reload” ----
-    reset_on_reload = st.sidebar.checkbox(
-        "Reset filters on refresh",
-        value=True,
-        key="reset_on_reload"
-    )
+    # # 0) --- add a toggle for “reset filters on every reload” ----
+    # reset_on_reload = st.sidebar.checkbox(
+    #     "Reset filters on refresh",
+    #     value=True,
+    #     key="reset_on_reload"
+    # )
 
     # track the last seen refresh tick
     curr_tick = st.session_state.get("refresh", 0)
     last_tick = st.session_state.get("_last_refresh_tick", None)
 
-    # Keys we store in st.session_state for filter persistence
-    FILTER_KEYS = ["status_filter", "side_filter", "type_filter", "asset_filter"]
-
-    # 1) if toggle is on *and* this is a new auto‐refresh, drop all FILTER_KEYS
-    if reset_on_reload and last_tick is not None and curr_tick != last_tick:
-        for k in FILTER_KEYS:
-            st.session_state.pop(k, None)
-    # 2) store the tick for the next run
-    st.session_state["_last_refresh_tick"] = curr_tick
 
     # ── 1 · Global “Filters” expander ───────────────────────────────────
     filters_expander = st.expander("Filters", expanded=False)
@@ -137,6 +128,9 @@ def render() -> None:
     type_opts   = sorted(df_copy["type"].str.capitalize().unique())
     asset_opts  = sorted(df_copy["Asset"].unique())
 
+    # Keys we store in st.session_state for filter persistence
+    FILTER_KEYS = ["status_filter", "side_filter", "type_filter", "asset_filter"]
+
     # Reset filters when ‘tail’ slider jumps to a very different value
     if st.session_state.get("_last_tail") != tail:
         for k in FILTER_KEYS:
@@ -167,10 +161,45 @@ def render() -> None:
                 st.rerun()
 
         with left:
+            # Multiselect widgets for each filter
+            # and a checkbox to freeze the filter on reload
             status_sel = st.multiselect("Status", status_opts, key="status_filter")
+            status_freeze = st.checkbox(
+                f"Freeze status filter on reload",
+                value=False,
+                key=f"reset_status_filter",
+            )
             side_sel   = st.multiselect("Side",   side_opts,   key="side_filter")
+            side_freeze = st.checkbox(
+                f"Freeze side filter on reload",
+                value=False,
+                key=f"reset_side_filter",
+            )
             type_sel   = st.multiselect("Type",   type_opts,   key="type_filter")
+            type_freeze = st.checkbox(
+                f"Freeze type filter on reload",
+                value=False,
+                key=f"reset_type_filter",
+            )
             asset_sel  = st.multiselect("Asset (base)", asset_opts, key="asset_filter")
+            asset_freeze = st.checkbox(
+                f"Freeze asset filter on reload",
+                value=False,
+                key=f"reset_asset_filter",
+            )
+
+    # 1) if toggle is on *and* this is a new auto‐refresh, drop all FILTER_KEYS
+    is_new_refresh = (last_tick is None) or (curr_tick != last_tick)
+    if is_new_refresh and not status_freeze:
+        st.session_state.pop("status_filter", None)
+    if is_new_refresh and not side_freeze:
+        st.session_state.pop("side_filter", None)
+    if is_new_refresh and not type_freeze:
+        st.session_state.pop("type_filter", None)
+    if is_new_refresh and not asset_freeze:
+        st.session_state.pop("asset_filter", None)
+    # 2) store the tick for the next run
+    st.session_state["_last_refresh_tick"] = curr_tick
 
     # ── 5 · Apply filter mask ───────────────────────────────────────────
     mask = (
