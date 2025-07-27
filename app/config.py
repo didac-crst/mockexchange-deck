@@ -1,3 +1,4 @@
+# config.py
 from functools import lru_cache
 from pathlib import Path
 from dotenv import load_dotenv

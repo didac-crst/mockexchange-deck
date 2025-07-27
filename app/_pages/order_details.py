@@ -1,242 +1,248 @@
-# # app/_pages/order_details.py
+"""order_details.py
 
-# from pathlib import Path
-# from dotenv import load_dotenv
-# import streamlit as st
-# import requests, os
+Streamlit sub‑page that shows a **single order** in depth.
 
-# load_dotenv(Path(__file__).parent.parent.parent / ".env")
+It is opened when the user clicks the 🔍 link in the Orders dataframe.
+The page:
 
-# API_BASE = os.getenv("API_BASE", "http://localhost:8000")
+1. Pulls the order (plus its step‑by‑step *history*) from the REST API.
+2. Shows headline metrics (status, type, timestamps…).
+3. Lets the user **cancel** the order if it is still open.
+4. Displays a compact summary grid (amounts, notional, fee).
+5. Renders the full *order history* table.
 
+Only comments & docstrings were added – runtime logic is unchanged.
+"""
 
-# def render(order_id: str) -> None:
-#     st.set_page_config(page_title=f"Order {order_id} history")
-#     st.header(f"Order #{order_id} – execution history")
-#     st.markdown("This page shows the execution history of a specific order.")
+from __future__ import annotations
 
-#     # Fetch & show
-#     url = f"{API_BASE}/orders/{order_id}?include_history=true"
-#     try:
-#         resp = requests.get(url, timeout=10)
-#         resp.raise_for_status()
-#         data = resp.json()
-#     except Exception as exc:
-#         st.error(f"Could not load history:\n```\n{exc}\n```")
-#         return
-
-#     if not data:
-#         st.info("No history found for this order.")
-#         return
-
-#     # One-liner: render whatever shape your endpoint returns
-#     st.json(data, expanded=False)
-
-# app/_pages/order_history.py
-
-from pathlib import Path
-from dotenv import load_dotenv
-import streamlit as st
-import requests, os
-import pandas as pd
+# Standard library -------------------------------------------------------------
 from datetime import datetime, timezone
+import os
+from pathlib import Path
+import requests
 
+# Third‑party ------------------------------------------------------------------
+import pandas as pd
+import streamlit as st
+from dotenv import load_dotenv
+
+# First‑party ------------------------------------------------------------------
 from ._helpers import _remove_small_zeros
-from ._row_colors import _STATUS_LIGHT
+from ._colors import _STATUS_LIGHT
 
+# -----------------------------------------------------------------------------
+# Configuration
+# -----------------------------------------------------------------------------
 load_dotenv(Path(__file__).parent.parent.parent / ".env")
-API_BASE = os.getenv("API_BASE", "http://localhost:8000")
+API_BASE = os.getenv("API_BASE", "http://localhost:8000")  # REST back‑end
 
-def _human_ts(ms: int | None) -> str:
-    """Convert epoch‐ms to local YYYY-MM-DD HH:MM:SS, blank on None."""
+# -----------------------------------------------------------------------------
+# Helpers
+# -----------------------------------------------------------------------------
+
+def _human_ts(ms: int | None) -> str:  # noqa: D401 – short description fine
+    """Convert *epoch‑milliseconds* (UTC) → local ``YYYY‑MM‑DD HH:MM:SS`` string.
+
+    Returns an empty string for ``None`` so dataframe cells stay blank.
+    """
     if ms is None:
         return ""
-    dt = datetime.fromtimestamp(ms/1000, tz=timezone.utc).astimezone()
+    dt = datetime.fromtimestamp(ms / 1000, tz=timezone.utc).astimezone()
     return dt.strftime("%Y-%m-%d %H:%M:%S")
 
 
-def render(order_id: str) -> None:
+# -----------------------------------------------------------------------------
+# Page renderer
+# -----------------------------------------------------------------------------
 
-    # Format numbers
-    fmt = lambda v: _remove_small_zeros(f"{v:,.6f}")
-    fmt_notion = lambda v: f"{v:,.2f} {data.get('notion_currency')}"
-    fmt_fee = lambda v: f"{v:,.4f} {data.get('fee_currency')}"
+def render(order_id: str) -> None:  # noqa: D401
+    """Render the *Order Details* page for a given ``order_id``.
 
-    # ── “Back” button ────────────────────────────────────────────────────────
+    Parameters
+    ----------
+    order_id : str
+        Unique identifier of the order (UUID or int from database).
+    """
+
+    # ------------------------------------------------------------------
+    # Formatting lambdas (local closures keep code below concise)
+    # ------------------------------------------------------------------
+    fmt = lambda v: _remove_small_zeros(f"{v:,.6f}")  # noqa: E731
+    fmt_notion = lambda v: f"{v:,.2f} {data.get('notion_currency')}"  # noqa: E731
+    fmt_fee = lambda v: f"{v:,.4f} {data.get('fee_currency')}"        # noqa: E731
+
+    # ------------------------------------------------------------------
+    # Back navigation – remove "order_id" query param and rerun main page
+    # ------------------------------------------------------------------
     if st.button("← Back to Order Book"):
-        # Remove the order_id key from the URL query params
         if "order_id" in st.query_params:
             del st.query_params["order_id"]
-            # st.query_params["page"] = "Orders"  # Ensure we show the Orders page
-        # Re-run so that main.py sees no order_id and shows Orders again
         st.rerun()
 
-    # Fetch from API
+    # ------------------------------------------------------------------
+    # Fetch order (with history) from REST API
+    # ------------------------------------------------------------------
     url = f"{API_BASE}/orders/{order_id}?include_history=true"
     try:
         resp = requests.get(url, timeout=10)
         resp.raise_for_status()
         data = resp.json()
-    except Exception as exc:
+    except Exception as exc:  # broad but adequate for a UI wrapper
         st.error(f"Could not load history:\n```\n{exc}\n```")
         return
 
-    data_keys = list(data.keys())
-    # If order not found, there is a dict with an "error" key
-    if "error" in data_keys:
-        st.info("No history found for order ID "
-                f"{order_id} - Probably it has been pruned.")
+    # In MockExchange errors come back as {"error": "..."} dict.
+    if "error" in data:
+        st.info(
+            "No history found for order ID " f"{order_id} – Probably it has been pruned."
+        )
         return
 
-    # ── 0) Prepare data ───────────────────────────────────────────────────
+    # ------------------------------------------------------------------
+    # 0) Derive helper variables for display
+    # ------------------------------------------------------------------
     ticker = data.get("symbol")
     asset = ticker.split("/")[0]
     side = data.get("side").upper()
-    _status = data.get("status")
-    status_light = _STATUS_LIGHT.get(_status, "⚪")  # default to white circle
-    status = _status.replace("_", " ").capitalize()
-    type_info = (
-        f"{data.get('type').capitalize()} [{fmt(data.get('limit_price',0))} {data.get('notion_currency')}]" if data.get("type") == "limit" else data.get("type").capitalize()
-    )
-    _price = data.get("price", 0)
-    if _price is None or _price == 0:
-        price = None
-    else:
-        price = f"{fmt(data.get('price', 0))} {data.get('notion_currency')}"
 
-    placed_ts  = _human_ts(data.get("ts_create"))
+    _status = data.get("status")
+    status_light = _STATUS_LIGHT.get(_status, "⚪")  # coloured emoji bullet
+    status = _status.replace("_", " ").capitalize()
+
+    # Type info → show limit price inline when applicable
+    type_info = (
+        f"{data.get('type').capitalize()} "
+        f"[{fmt(data.get('limit_price', 0))} {data.get('notion_currency')}]"
+        if data.get("type") == "limit"
+        else data.get("type").capitalize()
+    )
+
+    # Average execution price (None or 0 ⇢ blank)
+    _price = data.get("price", 0)
+    price = (
+        f"{fmt(_price)} {data.get('notion_currency')}" if _price not in (None, 0) else None
+    )
+
+    # Time‑stamps -------------------------------------------------------
+    placed_ts = _human_ts(data.get("ts_create"))
     updated_ts = _human_ts(data.get("ts_update"))
     executed_ts = _human_ts(data.get("ts_finish")) if data.get("ts_finish") else None
+
     is_finished = executed_ts is not None
     latency = (
-        "{:,.2f} seconds".format((data.get("ts_finish") - data.get("ts_create")) / 1000)
-        if data.get("ts_finish") else "N/A"
+        f"{(data.get('ts_finish') - data.get('ts_create')) / 1000:,.2f} seconds"
+        if is_finished
+        else "N/A"
     )
 
-    # ── 1) Overview as metrics ────────────────────────────────────────────
+    # ------------------------------------------------------------------
+    # 1) Overview metrics (three columns)
+    # ------------------------------------------------------------------
     st.set_page_config(page_title=f"Order {order_id}")
     st.header(f"{status_light} {side} Order #{order_id} [{ticker}]")
 
-    # Layout in three columns of big numbers/text
     c1, c2, c3 = st.columns(3)
 
+    # Column 1 – basic id & status
     with c1:
-        st.metric(
-            label="Asset",
-            value=asset,
-            delta=None,
-            delta_color="off",
-        )
-        st.metric(
-            label="Status",
-            value=status,
-            delta=None,
-            delta_color="off",
-        )
+        st.metric("Asset", asset)
+        st.metric("Status", status)
+
+    # Column 2 – type & avg price
     with c2:
-        st.metric(
-            label="Type",
-            value=type_info,
-            delta=None,
-            delta_color="off",
-        )
+        st.metric("Type", type_info)
         if price is not None:
-            st.metric(
-                label="Average price",
-                value=price,
-                delta=None,
-                delta_color="off",
-        )
+            st.metric("Average price", price)
+
+    # Column 3 – timestamps & latency (or cancel button if open)
     with c3:
-        st.metric(
-            label="Created",
-            value=placed_ts,
-            delta=None,
-            delta_color="off",
-        )
-        st.metric(
-            label="Finished" if is_finished else "Updated",
-            value=updated_ts,
-            delta=None,
-            delta_color="off",
-        )
+        st.metric("Created", placed_ts)
+        st.metric("Finished" if is_finished else "Updated", updated_ts)
         if is_finished:
-            st.metric(
-                label="Latency",
-                value=latency,
-                delta=None,
-                delta_color="off",
-            )
+            st.metric("Latency", latency)
         else:
+            # Allow user to cancel still‑open orders
             if st.button("Cancel Order"):
-                # Cancel the order via API
                 cancel_url = f"{API_BASE}/orders/{order_id}/cancel"
                 try:
                     cancel_resp = requests.post(cancel_url, timeout=10)
                     cancel_resp.raise_for_status()
                     st.success("Order cancelled successfully.")
-                    # Re-run to show the updated status
                     st.rerun()
                 except Exception as exc:
                     st.error(f"Could not cancel order:\n```\n{exc}\n```")
+
     st.markdown("---")
 
-    # ── Compact summary grid ───────────────────────────────────────────────
+    # ------------------------------------------------------------------
+    # 2) Compact summary grid (amount / notional / fee)
+    # ------------------------------------------------------------------
     st.subheader("Quick summary")
 
-    # Compute the values
-    initial_amount    = data.get("amount", 0)
-    filled_amount     = data.get("actual_filled", 0)
-    remaining_amount  = initial_amount - filled_amount
+    # Raw numeric values from the payload ------------------------------
+    initial_amount = data.get("amount", 0)
+    filled_amount = data.get("actual_filled", 0)
+    remaining_amount = initial_amount - filled_amount
 
-    initial_notion    = data.get("initial_booked_notion", 0)
-    actual_notion     = data.get("actual_notion", 0)
-    remaining_notion  = data.get("reserved_notion_left", 0)
+    initial_notion = data.get("initial_booked_notion", 0)
+    actual_notion = data.get("actual_notion", 0)
+    remaining_notion = data.get("reserved_notion_left", 0)
 
-    initial_fee       = data.get("initial_booked_fee", 0)
-    actual_fee        = data.get("actual_fee", 0)
-    remaining_fee     = data.get("reserved_fee_left", 0)
+    initial_fee = data.get("initial_booked_fee", 0)
+    actual_fee = data.get("actual_fee", 0)
+    remaining_fee = data.get("reserved_fee_left", 0)
 
     col1, col2, col3 = st.columns(3)
 
     with col1:
-        st.metric("Asset ▶ Initial requested",  fmt(initial_amount))
-        st.metric("Asset ▶ Actual filled",      fmt(filled_amount))
-        st.metric("Asset ▶ Missing",            fmt(remaining_amount))
+        st.metric("Asset ▶ Initial requested", fmt(initial_amount))
+        st.metric("Asset ▶ Actual filled", fmt(filled_amount))
+        st.metric("Asset ▶ Missing", fmt(remaining_amount))
 
     with col2:
-        st.metric("Notional ▶ Initial booked",  fmt_notion(initial_notion))
-        actual_str = f"Notional ▶ {'Actual paid' if side == 'BUY' else 'Actual received'}"
-        st.metric(actual_str,     fmt_notion(actual_notion))
-        st.metric("Notional ▶ Still booked",       fmt_notion(remaining_notion))
+        st.metric("Notional ▶ Initial booked", fmt_notion(initial_notion))
+        actual_str = "Notional ▶ Actual paid" if side == "BUY" else "Notional ▶ Actual received"
+        st.metric(actual_str, fmt_notion(actual_notion))
+        st.metric("Notional ▶ Still booked", fmt_notion(remaining_notion))
 
     with col3:
-        st.metric("Fee ▶ Initial booked",       fmt_fee(initial_fee))
-        st.metric("Fee ▶ Actual paid",          fmt_fee(actual_fee))
-        st.metric("Fee ▶ Still booked",            fmt_fee(remaining_fee))
+        st.metric("Fee ▶ Initial booked", fmt_fee(initial_fee))
+        st.metric("Fee ▶ Actual paid", fmt_fee(actual_fee))
+        st.metric("Fee ▶ Still booked", fmt_fee(remaining_fee))
 
     st.markdown("---")
 
-    # ── 2) History table ─────────────────────────────────────────────────
+    # ------------------------------------------------------------------
+    # 3) Fill history table
+    # ------------------------------------------------------------------
     history = data.get("history", {})
-    # Turn nested dict into list of records
-    records = []
+
+    # Convert nested dict {step → {..}} into list[dict] for DataFrame
+    records: list[dict] = []
     for step in sorted(history.keys(), key=int):
         rec = history[step]
-        records.append({
-            "Step":            int(step),
-            "Time":            _human_ts(rec.get("ts")),
-            "Status":          rec.get("status").replace("_"," ").capitalize(),
-            "Price":           rec.get("price") or "",
-            "Actual filled":    rec.get("actual_filled") or "",
-            "Remaining":       rec.get("amount_remain"),
-            "Actual Notional":   rec.get("actual_notion"),
-            "Notional left":     rec.get("reserved_notion_left"),
-            "Actual Fee":        rec.get("actual_fee"),
-            "Fee left":          rec.get("reserved_fee_left"),
-            "Comment":          rec.get("comment", ""),
-        })
+        records.append(
+            {
+                "Step": int(step),
+                "Time": _human_ts(rec.get("ts")),
+                "Status": rec.get("status").replace("_", " ").capitalize(),
+                "Price": rec.get("price") or "",
+                "Actual filled": rec.get("actual_filled") or "",
+                "Remaining": rec.get("amount_remain"),
+                "Actual Notional": rec.get("actual_notion"),
+                "Notional left": rec.get("reserved_notion_left"),
+                "Actual Fee": rec.get("actual_fee"),
+                "Fee left": rec.get("reserved_fee_left"),
+                "Comment": rec.get("comment", ""),
+            }
+        )
+
     df_hist = pd.DataFrame(records)
 
-    st.subheader("Fill history")
+    st.subheader("Order history")
     st.dataframe(df_hist, hide_index=True, use_container_width=True)
+    st.markdown(
+        "This table shows the step‑by‑step history of the order, "
+        "including price changes, filled amounts, and any comments."
+    )

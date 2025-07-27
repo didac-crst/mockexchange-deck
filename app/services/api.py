@@ -1,84 +1,124 @@
-# app/services/api.py
-import requests, pandas as pd
+"""api.py
+
+Thin synchronous REST wrapper around the MockExchange back-end.
+
+* Centralises **base-URL** + **API-key** handling so pages can simply call
+  `get_balance()`, `get_orders()` … without repeating boilerplate.
+* Normalises the varying shapes returned by `/balance`, `/tickers`, …
+  into predictable pandas DataFrames or dicts.
+* Adds a tiny layer of *resilience* (type checks, helpful exceptions)
+  while keeping network I/O trivial (`requests.get`, timeout=3 s).
+
+Only docstrings and comments have been added – runtime logic is intact.
+"""
+
+from __future__ import annotations
+
+# -----------------------------------------------------------------------------
+# Standard library & 3rd-party imports
+# -----------------------------------------------------------------------------
+import requests
+import pandas as pd
+
+# Project settings helper – returns a dict of env-based config values
 from app.config import settings
 
+# -----------------------------------------------------------------------------
+# Global constants (resolved once at import time)
+# -----------------------------------------------------------------------------
 HEAD, BASE = {"x-api-key": settings()["API_KEY"]}, settings()["API_URL"]
-QUOTE  = settings()["QUOTE_ASSET"]
+QUOTE = settings()["QUOTE_ASSET"]  # e.g. "USDT"
 
-def _get(path: str):
+# -----------------------------------------------------------------------------
+# Internal convenience helpers (prefixed with underscore)
+# -----------------------------------------------------------------------------
+
+def _get(path: str):  # noqa: D401 – short desc fine
+    """Perform a **GET** request to *BASE + path* with auth header.
+
+    Raises ``requests.exceptions.HTTPError`` on non-200 responses so the
+    caller can handle it explicitly.
+    """
     r = requests.get(f"{BASE}{path}", headers=HEAD, timeout=3)
     r.raise_for_status()
     return r.json()
 
-def _prices_for(assets: list[str]) -> dict[str, float]:
+
+def _prices_for(assets: list[str]) -> dict[str, float]:  # noqa: D401
+    """Return mapping ``{asset: last_price_in_quote}``.
+
+    Supports two payload styles:
+    * **Dict** – as delivered by `/tickers/BTC/USDT,ETH/USDT`
+    * **List** – future-proof for a potential `/ticker/price` alias
+
+    Any unknown shape will raise ``TypeError`` so pages fail early.
     """
-    Return {asset: last_price_in_quote}.
-    Works with mock-exchange `/tickers/BTC/USDT,ETH/USDT`
-    and with list-style payloads from a future /ticker/price alias.
-    """
-    pairs = [f"{a}/{QUOTE}" for a in assets if a != QUOTE]           # e.g. BTC/USDT
-    res   = _get(f"/tickers/{','.join(pairs)}")                     # dict OR list
+
+    # Build comma-separated pair list (skip the quote asset itself)
+    pairs = [f"{a}/{QUOTE}" for a in assets if a != QUOTE]
+    res = _get(f"/tickers/{','.join(pairs)}")
 
     def _extract_price(d: dict) -> float | None:
-        """pull price from whatever key the exchange uses."""
-        if "last" in d:                 # normal CCXT ticker
+        """Find the price field regardless of CCXT vs simplified schema."""
+        if "last" in d:  # standard CCXT ticker
             return float(d["last"])
         if "info" in d and "price" in d["info"]:
             return float(d["info"]["price"])
-        return None                     # unknown shape → skip
+        return None  # unknown format → caller will skip
 
-    price_map = {}
+    price_map: dict[str, float] = {}
 
-    if isinstance(res, dict):           # { "BTC/USDT": {...}, ... }
+    # ---------------- Dict payload ----------------
+    if isinstance(res, dict):
         for data in res.values():
             p = _extract_price(data)
             if p is not None:
                 price_map[data["symbol"].split("/")[0]] = p
 
-    elif isinstance(res, list):         # [ {...}, {...} ]
+    # ---------------- List payload ----------------
+    elif isinstance(res, list):
         for data in res:
             p = _extract_price(data)
             if p is not None and "symbol" in data:
                 price_map[data["symbol"].split("/")[0]] = p
     else:
         raise TypeError(f"Unexpected ticker payload type: {type(res)}")
-    
-    # Add quote 1:1 price for the quote asset itself
-    if QUOTE not in price_map:
-        price_map[QUOTE] = 1.0
 
+    # Quote asset always maps to 1.0 so downstream math is simpler
+    price_map.setdefault(QUOTE, 1.0)
     return price_map
 
-def _extract_assets(raw):
+
+def _extract_assets(raw):  # noqa: D401 – helper, not user-facing
+    """Normalise the many `/balance` response shapes into *list[dict]*.
+
+    Handles five shapes defined in the docstring; raises ``ValueError`` if
+    the payload is completely unfamiliar so bugs surface fast.
     """
-    Normalise whatever `/balance` returns into a list[dict].
-    Accepts:
-        1. {"assets": [...]}
-        2. {"data": [...]}
-        3. {"balances": [...]}
-        4. [{"asset": "BTC", ...}, ...]          # plain list
-        5. {"BTC": {...}, "ETH": {...}}          # mapping asset→fields
-    """
+    # Simple list – already what we want (#4)
     if isinstance(raw, list):
-        return raw                                              # #4
+        return raw
 
     if isinstance(raw, dict):
+        # Variants #1-3 – assets stored under a key
         for key in ("assets", "data", "balances"):
             if key in raw and isinstance(raw[key], list):
-                return raw[key]                                 # #1-3
+                return raw[key]
 
-        # #5 mapping style: turn into list of dicts
+        # Variant #5 – mapping style {"BTC": {...}, ...}
         if all(isinstance(v, dict) for v in raw.values()):
             return [{"asset": k, **v} for k, v in raw.items()]
 
     raise ValueError("Unrecognised `/balance` payload shape")
 
+# -----------------------------------------------------------------------------
+# Public API helpers (called by Streamlit pages)
+# -----------------------------------------------------------------------------
+
 def get_balance() -> dict:
-    """Fetch `/balance` endpoint and return a dict with:
-    - equity: total value in quote asset
-    - quote_asset: the quote asset symbol (e.g. USDT)
-    - assets_df: DataFrame with asset balances, prices, and values.
-    """
+    """Fetch `/balance` and return a structured dict
+    (equity, quote_asset, assets_df)."""
+
     snap = _get("/balance")
     if len(snap) == 0:
         return {
@@ -86,23 +126,23 @@ def get_balance() -> dict:
             "quote_asset": settings()["QUOTE_ASSET"],
             "assets_df": pd.DataFrame(),
         }
-    
+
     assets_df = pd.DataFrame(_extract_assets(snap))
 
-    # Ensure essential columns exist -----------------------------------------
+    # ---- Ensure mandatory columns exist --------------------------------
     if "asset" not in assets_df.columns:
         raise KeyError("`/balance` response lacks an 'asset' column")
 
     if "total" not in assets_df.columns:
-        # derive 'total' from free+locked or just free
-        free  = assets_df.get("free")
+        # Derive from free + locked as fallback
+        free = assets_df.get("free")
         locked = assets_df.get("locked", 0)
         if free is not None:
             assets_df["total"] = free + locked
         else:
             raise KeyError("Neither 'total' nor 'free' present in balance data")
 
-    # Price enrichment --------------------------------------------------------
+    # ---- Attach last prices -------------------------------------------
     if "quote_price" not in assets_df.columns:
         price_map = _prices_for(assets_df["asset"].tolist())
         assets_df["quote_price"] = assets_df["asset"].map(price_map)
@@ -115,38 +155,37 @@ def get_balance() -> dict:
         "assets_df": assets_df,
     }
 
+
 def get_active_asset_count() -> int:
-    """Thin helper for places that only need the tally shown by `/balance/list`."""
+    """Return just the `count` field from `/balance/list`."""
     return _get("/balance/list")["count"]
 
+
 def get_assets_overview() -> dict:
-    """Fetch `/balance/list` endpoint and return a dict with:
-    - count: number of active assets
-    - equity: total value in quote asset
-    - quote_asset: the quote asset symbol (e.g. USDT)
-    """
+    """Return the dict payload from `/overview/assets` with basic validation."""
     summary = _get("/overview/assets")
     if not isinstance(summary, dict):
         raise TypeError(f"Expected dict from /overview/assets, got {type(summary)}")
     return summary
 
+
 def get_orders(status: str | None = None, tail: int = 50) -> pd.DataFrame:
-    """
-    Fetch recent orders from `/orders` endpoint and return a tidy DataFrame.
+    """Return recent orders as a DataFrame.
 
-    Args:
-        status: 'open', 'filled', 'canceled', … or None for all.
-        tail:  max tail rows to pull.
-
-    The endpoint is expected to return a JSON list of dicts, each at least:
-        { "id": "...", "asset": "BTC", "side": "BUY", "qty": 0.1,
-          "price": 45000, "status": "FILLED", "timestamp": 1713187200 }
+    Parameters
+    ----------
+    status : str | None
+        Optional filter – e.g. "open", "filled", "canceled". ``None`` → all.
+    tail : int, default 50
+        How many most-recent rows to pull; maps to the server's ``tail`` query param.
     """
-    params = []
+
+    params: list[str] = []
     if status:
         params.append(f"status={status}")
     if tail:
         params.append(f"tail={tail}")
     path = "/orders" + ("?" + "&".join(params) if params else "")
-    rows = _get(path)                       # <- uses the existing private helper
+
+    rows = _get(path)  # returns list[dict]
     return pd.DataFrame(rows)

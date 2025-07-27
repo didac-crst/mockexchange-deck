@@ -1,43 +1,82 @@
-# app/main.py
+"""main.py
 
+Streamlit **entry-point** for the MockExchange dashboard.
+
+Responsibilities
+----------------
+* Define global page layout (wide view, expanded sidebar, title).
+* Implement a simple **navigation radio** – "Portfolio" vs *Order Book*.
+* Poll URL query-params so a direct link such as
+  ``...?order_id=123`` opens the *Order Details* sub-page immediately.
+* Trigger an **auto-refresh** every *REFRESH_SECONDS* (defined in app
+  configuration) so the UI stays live without manual reloads.
+
+Only comments and docstrings were added – runtime behaviour is exactly
+unchanged.
+"""
+
+from __future__ import annotations
+
+# -----------------------------------------------------------------------------
+# Third-party imports
+# -----------------------------------------------------------------------------
 import streamlit as st
 from streamlit_autorefresh import st_autorefresh
 
-# 1) Wide layout must be set before any other st calls:
-st.set_page_config(page_title="MockExchange Dashboard", layout="wide", initial_sidebar_state="expanded")
+# -----------------------------------------------------------------------------
+# 0) Global page configuration – must run before any Streamlit call
+# -----------------------------------------------------------------------------
+# * wide layout gives more room to tables
+# * keep the sidebar expanded by default so navigation is obvious
+st.set_page_config(
+    page_title="MockExchange Dashboard",
+    layout="wide",
+    initial_sidebar_state="expanded",
+)
 
+# -----------------------------------------------------------------------------
+# Local imports (after Streamlit initialisation)
+# -----------------------------------------------------------------------------
 from app.config import settings
 from app._pages import portfolio, orders, order_details
 
-# Sidebar navigation
+# -----------------------------------------------------------------------------
+# 1) Sidebar – navigation radio
+# -----------------------------------------------------------------------------
+
 st.sidebar.title("MockExchange")
-default_idx = 1     # 0 → first option, 1 → second, …
 
-# # Grab URL params early
+# Index 1 (vs 0) pre-selects the second radio choice → "Order Book"
+# so heavy users land directly on the live order table.
+default_idx = 1
+
+# Pull current URL parameters as early as possible
 params = st.query_params
-oid = params.get("order_id", None)
-# _page = params.get("page", None) # Override if provided
-# if _page and _page == "Orders":
-#     default_idx = 1
-#     del st.query_params["page"]  # Remove page param to avoid confusion
+oid: str | None = params.get("order_id", None)
 
+# Two-page app: Portfolio ↔ Order Book
 page = st.sidebar.radio(
-        "Navigate",
-        ("Portfolio", "Order Book"),
-        index=default_idx,          # pre-select “Orders”
-        key="sidebar_page",
+    "Navigate",
+    ("Portfolio", "Order Book"),
+    index=default_idx,
+    key="sidebar_page",
 )
 
-# Auto-refresh every N seconds
+# -----------------------------------------------------------------------------
+# 2) Auto-refresh – keeps data up-to-date without F5
+# -----------------------------------------------------------------------------
+# The key "refresh" is also used by child pages to detect reruns.
 st_autorefresh(interval=settings()["REFRESH_SECONDS"] * 1000, key="refresh")
 
-# If an order_id is in the URL, show its details
+# -----------------------------------------------------------------------------
+# 3) Routing logic – order details page has priority
+# -----------------------------------------------------------------------------
 if oid:
+    # Specific order requested via URL – render its dedicated page
     order_details.render(order_id=oid)
-
-# Otherwise show the selected page
 else:
+    # Otherwise fall back to the radio-selected main page
     if page == "Portfolio":
         portfolio.render()
-    else:  # page == "Orders"
+    else:  # page == "Order Book"
         orders.render()

@@ -1,33 +1,74 @@
-# orders.py
+"""orders.py
+
+Streamlit page that displays the **order book** of MockExchange.
+
+Key features
+------------
+* Pulls the most‑recent *N* orders from the REST back‑end (`get_orders`).
+* Lets the user interactively **filter** by order *status*, *side*, *type* and *asset*.
+* Persists those filters across automatic page refreshes – unless the
+  user explicitly unfreezes them.
+* Shows a colour‑coded dataframe where **freshly updated** rows are
+  highlighted and slowly fade out (visual degradations).
+* Optionally displays an "advanced" equity breakdown in the sidebar.
+
+The code is intentionally verbose on comments to serve as a living
+reference for new contributors.
+"""
+
+import os
+import time  # noqa: F401  # imported for completeness – not used directly yet
+from datetime import datetime, timezone
+from pathlib import Path
 
 import pandas as pd
 import streamlit as st
-import time, os
-from datetime import datetime, timezone
-from pathlib import Path
 from dotenv import load_dotenv
 
 from app.services.api import get_orders
-from ._helpers import _remove_small_zeros, _add_details_column, _display_advanced_details
-from ._row_colors import _row_style
+from ._helpers import (
+    _add_details_column,
+    _display_advanced_details,
+    _remove_small_zeros,
+)
+from ._colors import _row_style
 
+# -----------------------------------------------------------------------------
+# Configuration & constants
+# -----------------------------------------------------------------------------
+# Load environment variables from the project root .env so this file
+# can be executed standalone (e.g. `streamlit run src/.../orders.py`).
 load_dotenv(Path(__file__).parent.parent.parent / ".env")
 
-# ────────────────────────────────────────────────────────────────────────
-# Constants & one-off helpers
-# ────────────────────────────────────────────────────────────────────────
-FRESH_WINDOW_S = int(os.getenv("FRESH_WINDOW_S", 300))  # 5 minutes
+# How long a row stays "fresh" (seconds) → affects row colouring.
+FRESH_WINDOW_S = int(os.getenv("FRESH_WINDOW_S", 300))  # default 5 min
+# Number of colour‑fade steps between "brand‑new" and "old" rows.
 N_VISUAL_DEGRADATIONS = int(os.getenv("N_VISUAL_DEGRADATIONS", 12))
+
+# Slider defaults for the "tail" (how many recent orders to pull).
 SLIDER_MIN = int(os.getenv("SLIDER_MIN", 10))
 SLIDER_MAX = int(os.getenv("SLIDER_MAX", 1000))
 SLIDER_STEP = int(os.getenv("SLIDER_STEP", 10))
 SLIDER_DEFAULT = int(os.getenv("SLIDER_DEFAULT", 100))
 
-def _human_ts(ms: int | None) -> str:
-    """
-    Convert epoch-milliseconds from the backend into a *local* ISO-like
-    time-stamp (``YYYY-MM-DD HH:MM:SS``).  Empty string for nulls so the
-    dataframe cell stays blank.
+
+# -----------------------------------------------------------------------------
+# Helper functions
+# -----------------------------------------------------------------------------
+
+def _human_ts(ms: int | None) -> str:  # noqa: D401 – keep short description style
+    """Convert **epoch‑milliseconds** to the user's local time‑zone.
+
+    Parameters
+    ----------
+    ms : int | None
+        Milliseconds since *Unix epoch* (UTC) or ``None``.
+
+    Returns
+    -------
+    str
+        Formatted timestamp ``YYYY‑MM‑DD HH:MM:SS`` or an empty string
+        so the dataframe cell renders blank for ``null`` values.
     """
     if ms is None:
         return ""
@@ -35,63 +76,72 @@ def _human_ts(ms: int | None) -> str:
     return dt.strftime("%Y-%m-%d %H:%M:%S")
 
 
-# ────────────────────────────────────────────────────────────────────────
-# Main page renderer
-# ────────────────────────────────────────────────────────────────────────
-def render() -> None:
-    """
-    Orders page:
+# -----------------------------------------------------------------------------
+# Main page renderer – Streamlit entry‑point
+# -----------------------------------------------------------------------------
 
-    * Pull the *tail* of the order book from the REST API.
-    * Let the user filter by **status / side / type / asset**.
-    * Display the table with Streamlit’s dataframe component.
-    * Highlight rows that changed in the **last 60 s** to draw attention.
+def render() -> None:  # noqa: D401 – imperative mood is clearer here
+    """Render the **Order Book** page.
+
+    Workflow
+    --------
+    1. Read user‑defined *tail* (number of rows) and **filters** from the
+       sidebar/expander.
+    2. Fetch the corresponding slice from REST – falling back to the
+       full order book if the user chooses so.
+    3. Sync filter selections with ``st.session_state`` so they persist
+       across reruns. Implement **freeze** checkboxes allowing the user
+       to keep a filter even after auto‑refresh.
+    4. Build a human‑friendly dataframe (amount formatting, price/fee
+       prettifiers, latency computation…).
+    5. Style the rows according to their *age* so new activity pops out.
+    6. Finally, display the table with a dynamic height capped at 800 px.
     """
 
+    # Basic Streamlit page config
     st.set_page_config(page_title="Order Book")
     st.title("Order Book")
 
-
-    # track the last seen refresh tick
+    # ------------------------------------------------------------------
+    # Keep track of the auto‑refresh ticker so we can detect new reruns
+    # ------------------------------------------------------------------
     curr_tick = st.session_state.get("refresh", 0)
     last_tick = st.session_state.get("_last_refresh_tick", None)
 
-
-    # ── 1 · Global “Filters” expander ───────────────────────────────────
+    # ------------------------------------------------------------------
+    # 1) Expander – global filters (how much data to fetch)
+    # ------------------------------------------------------------------
     filters_expander = st.expander("Filters", expanded=False)
     with filters_expander:
-        # Toggle ON to unlimit the number of orders fetched
-        limit_toggle = st.checkbox("Fetch the whole order book", value=False, key="limit_toggle")
+        limit_toggle = st.checkbox(
+            "Fetch the whole order book", value=False, key="limit_toggle"
+        )
+        # ``tail=None`` signals the API client to drop the limit.
+        tail = None if limit_toggle else st.slider(
+            "Max number of last orders to load",
+            min_value=SLIDER_MIN,
+            max_value=SLIDER_MAX,
+            value=SLIDER_DEFAULT,
+            step=SLIDER_STEP,
+            key="tail_slider",
+        )
 
-        if limit_toggle:
-            tail = None  # fetch everything
-        else:
-            tail = st.slider(
-                "Max number of last orders to load",
-                min_value=SLIDER_MIN,
-                max_value=SLIDER_MAX,
-                value=SLIDER_DEFAULT,
-                step=SLIDER_STEP,
-                key="tail_slider",
-            )
-
-    # ── 2 · Fetch & massage raw data ────────────────────────────────────
-    # if tail is None, get_orders should fetch all orders
-
-    # new: pick up your base‐URL from env (or default)
+    # ------------------------------------------------------------------
+    # 2) Fetch raw data from the API and pre‑process
+    # ------------------------------------------------------------------
     base = os.getenv("UI_URL", "http://localhost:8000")
-
+    # ``_add_details_column`` injects the 🡒 Details link.
     df_raw = get_orders(tail=tail).pipe(_add_details_column, base_url=base)
     if df_raw.empty:
         st.info("No orders found.")
-        return
-    
-    # -- Sidebar filters --------------------------------------------------------
+        return  # early exit – nothing else to do
+
+    # ------------------------------------------------------------------
+    # Sidebar – advanced equity breakdown & toggle
+    # ------------------------------------------------------------------
     st.sidebar.header("Filters")
     advanced_display = st.sidebar.checkbox(
-        "Display advanced details",
-        value=False,
-        key="advanced_display"
+        "Display advanced details", value=False, key="advanced_display"
     )
     if advanced_display:
         st.sidebar.info(
@@ -100,95 +150,94 @@ def render() -> None:
         )
         _display_advanced_details()
 
-
+    # `df_copy` will be mutated for visual purposes; keep df_raw pristine.
     df_copy = df_raw.copy()
-    df_copy["Posted"]  = df_copy["ts_create"].map(_human_ts)
+    df_copy["Posted"] = df_copy["ts_create"].map(_human_ts)
     df_copy["Updated"] = df_copy["ts_update"].map(_human_ts)
+    # Split "BTC/USDT" → Asset="BTC", quote_asset="USDT"
     df_copy[["Asset", "quote_asset"]] = df_copy["symbol"].str.split("/", expand=True)
 
-    # ── 3 · Prepare filter options & maintain session state ─────────────
+    # ------------------------------------------------------------------
+    # 3) Build filter option lists & ensure session_state consistency
+    # ------------------------------------------------------------------
     def _sync_filter_state(key: str, options: list[str]) -> None:
-        """
-        Ensure *key* exists in session_state *and* contains only valid choices.
-        Keeps the list unchanged if the user cleared everything manually.
-        """
+        """Guarantee that ``st.session_state[key]`` exists & is valid."""
         if key not in st.session_state:
-            st.session_state[key] = options[:]   # first visit → pre-select all
+            # First visit → pre‑select all choices.
+            st.session_state[key] = options[:]
             return
-        # Drop choices that vanished due to data refresh
+        # Drop selections that disappeared in the new dataset.
         st.session_state[key] = [v for v in st.session_state[key] if v in options]
 
-    status_opts = sorted(df_copy["status"].str.replace("_", " ").str.capitalize().unique())
-    side_opts   = sorted(df_copy["side"].str.upper().unique())
-    type_opts   = sorted(df_copy["type"].str.capitalize().unique())
-    asset_opts  = sorted(df_copy["Asset"].unique())
+    status_opts = sorted(
+        df_copy["status"].str.replace("_", " ").str.capitalize().unique()
+    )
+    side_opts = sorted(df_copy["side"].str.upper().unique())
+    type_opts = sorted(df_copy["type"].str.capitalize().unique())
+    asset_opts = sorted(df_copy["Asset"].unique())
 
-    # Keys we store in st.session_state for filter persistence
     FILTER_KEYS = ["status_filter", "side_filter", "type_filter", "asset_filter"]
 
-    # Reset filters when ‘tail’ slider jumps to a very different value
+    # If the user changed the *tail* slider, reset all filters (new context).
     if st.session_state.get("_last_tail") != tail:
         for k in FILTER_KEYS:
             st.session_state.pop(k, None)
         st.session_state["_last_tail"] = tail
 
-    # Keep all filter states in sync with the current option universe
+    # Keep the stored selections in sync with the current data universe.
     _sync_filter_state("status_filter", status_opts)
-    _sync_filter_state("side_filter",   side_opts)
-    _sync_filter_state("type_filter",   type_opts)
-    _sync_filter_state("asset_filter",  asset_opts)
+    _sync_filter_state("side_filter", side_opts)
+    _sync_filter_state("type_filter", type_opts)
+    _sync_filter_state("asset_filter", asset_opts)
 
-    # ── 4 · Render the filter widgets themselves ────────────────────────
+    # ------------------------------------------------------------------
+    # 4) Render filter widgets (multiselects + freeze checkboxes)
+    # ------------------------------------------------------------------
     with filters_expander:
         left, right = st.columns([0.8, 0.2])
 
+        # Right column → reset button
         with right:
-            # Simple “factory-reset” button
-            st.write("")  # visual spacer
+            st.write("")  # spacer for alignment
             if st.button("🔄 Reset filters"):
                 for k in FILTER_KEYS:
                     st.session_state.pop(k, None)
-                # seed defaults again
+                # Re‑seed defaults (select all)
                 _sync_filter_state("status_filter", status_opts)
-                _sync_filter_state("side_filter",   side_opts)
-                _sync_filter_state("type_filter",   type_opts)
-                _sync_filter_state("asset_filter",  asset_opts)
-                # Reset the radio button for frozen filters
-                st.session_state["reset_status_filter"] = False
-                st.session_state["reset_side_filter"] = False
-                st.session_state["reset_type_filter"] = False
-                st.session_state["reset_asset_filter"] = False
+                _sync_filter_state("side_filter", side_opts)
+                _sync_filter_state("type_filter", type_opts)
+                _sync_filter_state("asset_filter", asset_opts)
+                # Also reset the "freeze" flags so UI stays intuitive.
+                st.session_state.update(
+                    reset_status_filter=False,
+                    reset_side_filter=False,
+                    reset_type_filter=False,
+                    reset_asset_filter=False,
+                )
                 st.rerun()
 
+        # Left column → actual controls
         with left:
-            # Multiselect widgets for each filter
-            # and a checkbox to freeze the filter on reload
             status_sel = st.multiselect("Status", status_opts, key="status_filter")
             status_freeze = st.checkbox(
-                f"Freeze status filter on reload",
-                value=False,
-                key=f"reset_status_filter",
+                "Freeze status filter on reload", value=False, key="reset_status_filter"
             )
-            side_sel   = st.multiselect("Side",   side_opts,   key="side_filter")
+            side_sel = st.multiselect("Side", side_opts, key="side_filter")
             side_freeze = st.checkbox(
-                f"Freeze side filter on reload",
-                value=False,
-                key=f"reset_side_filter",
+                "Freeze side filter on reload", value=False, key="reset_side_filter"
             )
-            type_sel   = st.multiselect("Type",   type_opts,   key="type_filter")
+            type_sel = st.multiselect("Type", type_opts, key="type_filter")
             type_freeze = st.checkbox(
-                f"Freeze type filter on reload",
-                value=False,
-                key=f"reset_type_filter",
+                "Freeze type filter on reload", value=False, key="reset_type_filter"
             )
-            asset_sel  = st.multiselect("Asset (base)", asset_opts, key="asset_filter")
+            asset_sel = st.multiselect("Asset (base)", asset_opts, key="asset_filter")
             asset_freeze = st.checkbox(
-                f"Freeze asset filter on reload",
-                value=False,
-                key=f"reset_asset_filter",
+                "Freeze asset filter on reload", value=False, key="reset_asset_filter"
             )
 
-    # 1) if toggle is on *and* this is a new auto‐refresh, drop all FILTER_KEYS
+    # ------------------------------------------------------------------
+    # Freeze logic – drop selections only when NOT frozen on a new refresh
+    # ------------------------------------------------------------------
     is_new_refresh = (last_tick is None) or (curr_tick != last_tick)
     if is_new_refresh and not status_freeze:
         st.session_state.pop("status_filter", None)
@@ -198,10 +247,12 @@ def render() -> None:
         st.session_state.pop("type_filter", None)
     if is_new_refresh and not asset_freeze:
         st.session_state.pop("asset_filter", None)
-    # 2) store the tick for the next run
+    # Store tick for next run so we can detect changes.
     st.session_state["_last_refresh_tick"] = curr_tick
 
-    # ── 5 · Apply filter mask ───────────────────────────────────────────
+    # ------------------------------------------------------------------
+    # 5) Apply the composite mask to the dataframe
+    # ------------------------------------------------------------------
     mask = (
         df_copy["status"].str.replace("_", " ").str.capitalize().isin(status_sel)
         & df_copy["side"].str.upper().isin(side_sel)
@@ -209,16 +260,20 @@ def render() -> None:
         & df_copy["Asset"].isin(asset_sel)
     )
     df = df_copy[mask].copy()
-    # Caption with the number of rows loaded
-    # and how many are shown in the table
-    if tail is not None:
-        st.caption(f"🧾 Loaded {len(df_raw)} rows (showing {len(df)}) "
-                f"from last {tail} orders")
-    else:
-        st.caption(f"🧾 Loaded {len(df_raw)} rows (showing {len(df)}) "
-                f"from the whole order book")
 
-    # ── 6 · Derive human-readable / numeric helper columns ──────────────
+    # Friendly caption – how much data did we load vs display?
+    if tail is not None:
+        st.caption(
+            f"🧾 Loaded {len(df_raw)} rows (showing {len(df)}) from last {tail} orders"
+        )
+    else:
+        st.caption(
+            f"🧾 Loaded {len(df_raw)} rows (showing {len(df)}) from the whole order book"
+        )
+
+    # ------------------------------------------------------------------
+    # 6) Derive helper columns (latency, formatted quantities/prices…)
+    # ------------------------------------------------------------------
     ts_create_num = pd.to_numeric(df["ts_create"], errors="coerce")
     ts_finish_num = pd.to_numeric(df["ts_finish"], errors="coerce")
 
@@ -226,73 +281,119 @@ def render() -> None:
         (ts_finish_num - ts_create_num).div(1000).round(2).where(ts_finish_num.notna(), "")
     )
 
-    df["Req. Qty"]   = df["amount"].map(lambda v: _remove_small_zeros(f"{v:,.6f}"))
+    # Human‑friendly quantity formatting (strip tiny rounding remainders)
+    df["Req. Qty"] = df["amount"].map(lambda v: _remove_small_zeros(f"{v:,.6f}"))
     df["Filled Qty"] = df["actual_filled"].apply(
         lambda v: _remove_small_zeros(f"{v:,.6f}") if pd.notna(v) else ""
     )
 
-    # price / fee / notional prettifiers
+    # Append currency codes where applicable
     df["Limit price"] = df.apply(
-        lambda r: f"{_remove_small_zeros(f'{r.limit_price:,.6f}')}"
-                  f" {r.quote_asset}" if pd.notna(r.limit_price) else "",
+        lambda r: (
+            f"{_remove_small_zeros(f'{r.limit_price:,.6f}')} {r.quote_asset}"
+            if pd.notna(r.limit_price)
+            else ""
+        ),
         axis=1,
     )
     df["Exec. price"] = df.apply(
-        lambda r: f"{_remove_small_zeros(f'{r.price:,.6f}')}"
-                  f" {r.quote_asset}" if pd.notna(r.price) else "",
+        lambda r: (
+            f"{_remove_small_zeros(f'{r.price:,.6f}')} {r.quote_asset}"
+            if pd.notna(r.price)
+            else ""
+        ),
         axis=1,
     )
 
+    # Notional & fee prettifiers ------------------------------------------------
     df["Reserved notional"] = df.apply(
-        lambda r: f"{r.reserved_notion_left:,.2f} {r.notion_currency}"
-                  if pd.notna(r.reserved_notion_left) else "",
+        lambda r: (
+            f"{r.reserved_notion_left:,.2f} {r.notion_currency}"
+            if pd.notna(r.reserved_notion_left)
+            else ""
+        ),
         axis=1,
     )
     df["Actual notional"] = df.apply(
-        lambda r: f"{r.actual_notion:,.2f} {r.notion_currency}"
-                  if pd.notna(r.actual_notion) else "",
+        lambda r: (
+            f"{r.actual_notion:,.2f} {r.notion_currency}"
+            if pd.notna(r.actual_notion)
+            else ""
+        ),
         axis=1,
     )
     df["Reserved fee"] = df.apply(
-        lambda r: f"{r.reserved_fee_left:,.2f} {r.fee_currency}"
-                  if pd.notna(r.reserved_fee_left) else "",
+        lambda r: (
+            f"{r.reserved_fee_left:,.2f} {r.fee_currency}"
+            if pd.notna(r.reserved_fee_left)
+            else ""
+        ),
         axis=1,
     )
     df["Actual fee"] = df.apply(
-        lambda r: f"{r.actual_fee:,.2f} {r.fee_currency}"
-                  if pd.notna(r.actual_fee) else "",
+        lambda r: (
+            f"{r.actual_fee:,.2f} {r.fee_currency}"
+            if pd.notna(r.actual_fee)
+            else ""
+        ),
         axis=1,
     )
 
-    df["Order ID"]      = df["id"].astype(str)
+    # Normalise naming for the final view --------------------------------------
+    df["Order ID"] = df["id"].astype(str)
     df["Exec. latency"] = df["Exec. latency"].apply(
         lambda v: f"{v:,.2f} s" if isinstance(v, (int, float)) else ""
     )
-    df["Side"]   = df["side"].str.upper()
-    df["Type"]   = df["type"].str.capitalize()
+    df["Side"] = df["side"].str.upper()
+    df["Type"] = df["type"].str.capitalize()
     df["Status"] = df["status"].str.replace("_", " ").str.capitalize()
 
-    df_view = df[
-        ["Details", "Order ID", "Posted", "Updated", "Asset", "Side", "Status", "Type",
-         "Limit price", "Exec. price", "Req. Qty", "Filled Qty", "Reserved notional",
-         "Actual notional", "Reserved fee", "Actual fee", "Exec. latency"]
-    ].sort_values("Updated", ascending=False).reset_index(drop=True)
-
-    # # ── 6½ · Row-level highlighting for *fresh* updates ─────────────────
-    styler = (
-        df_view.style
-            .format({"Details": lambda html: html}, escape="html")
-            .apply(_row_style,
-                   axis=1,
-                   levels=N_VISUAL_DEGRADATIONS,
-                   fresh_window_s=FRESH_WINDOW_S)
+    # Select & order columns for the UI
+    df_view = (
+        df[
+            [
+                "Details",
+                "Order ID",
+                "Posted",
+                "Updated",
+                "Asset",
+                "Side",
+                "Status",
+                "Type",
+                "Limit price",
+                "Exec. price",
+                "Req. Qty",
+                "Filled Qty",
+                "Reserved notional",
+                "Actual notional",
+                "Reserved fee",
+                "Actual fee",
+                "Exec. latency",
+            ]
+        ]
+        .sort_values("Updated", ascending=False)
+        .reset_index(drop=True)
     )
 
-    # ── 7 · Show the table ──────────────────────────────────────────────
+    # ------------------------------------------------------------------
+    # 6½) Style – row fading for recently updated orders
+    # ------------------------------------------------------------------
+    styler = (
+        df_view.style
+        .format({"Details": lambda html: html}, escape="html")
+        .apply(
+            _row_style,
+            axis=1,
+            levels=N_VISUAL_DEGRADATIONS,
+            fresh_window_s=FRESH_WINDOW_S,
+        )
+    )
 
-    height_calc = 35 * (1+len(df_view)) + 5
-    if height_calc > 800:
-        height_calc = 800
+    # ------------------------------------------------------------------
+    # 7) Display the dataframe
+    # ------------------------------------------------------------------
+    # Dynamic height: ~35 px per row, but cap at 800 px for usability.
+    height_calc = min(35 * (1 + len(df_view)) + 5, 800)
 
     st.dataframe(
         styler,
