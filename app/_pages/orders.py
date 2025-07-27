@@ -51,26 +51,6 @@ def render() -> None:
     st.set_page_config(page_title="Order Book")
     st.title("Order Book")
 
-    # -- Sidebar filters --------------------------------------------------------
-    st.sidebar.header("Filters")
-    advanced_display = st.sidebar.checkbox(
-        "Display advanced details",
-        value=False,
-        key="advanced_display"
-    )
-    if advanced_display:
-        st.sidebar.info(
-            "Advanced details include total/free/used amounts, "
-            "for both cash and assets comparing portfolio and order book sources."
-        )
-        _display_advanced_details()
-
-    # # 0) --- add a toggle for “reset filters on every reload” ----
-    # reset_on_reload = st.sidebar.checkbox(
-    #     "Reset filters on refresh",
-    #     value=True,
-    #     key="reset_on_reload"
-    # )
 
     # track the last seen refresh tick
     curr_tick = st.session_state.get("refresh", 0)
@@ -105,6 +85,21 @@ def render() -> None:
     if df_raw.empty:
         st.info("No orders found.")
         return
+    
+    # -- Sidebar filters --------------------------------------------------------
+    st.sidebar.header("Filters")
+    advanced_display = st.sidebar.checkbox(
+        "Display advanced details",
+        value=False,
+        key="advanced_display"
+    )
+    if advanced_display:
+        st.sidebar.info(
+            "Advanced details include total/free/used amounts, "
+            "for both cash and assets comparing portfolio and order book sources."
+        )
+        _display_advanced_details()
+
 
     df_copy = df_raw.copy()
     df_copy["Posted"]  = df_copy["ts_create"].map(_human_ts)
