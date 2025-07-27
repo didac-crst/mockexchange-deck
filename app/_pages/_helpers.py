@@ -3,6 +3,8 @@
 import pandas as pd
 import streamlit as st
 
+from app.services.api import get_assets_overview
+
 
 def _remove_small_zeros(num_str: str) -> str:
     """A number on a string, formatted to 6 decimal places.
@@ -56,3 +58,31 @@ def _add_details_column(
     if not df.empty:
         df[new_col] = df[order_id_col].astype(str).map(make_url)
     return df
+
+
+def _display_advanced_details() -> None:
+    _W = "⚠️"
+    summary = get_assets_overview()
+    misc = summary.get("misc", {})
+    cash_asset = misc.get("cash_asset", "")
+    mismatch = misc.get("mismatch", {})
+    fmt_cash = lambda v: f"{v:,.2f} {cash_asset}"
+    fmt = lambda txt, m: f"{_W} {fmt_cash(txt)}" if m else fmt_cash(txt) # Add warning icon if mismatch
+    balance_summary = summary.get("balance_source", {})
+    orders_summary = summary.get("orders_source", {})
+    c1, c2, c3 = st.columns(3)
+    with c1:
+        st.metric("Portfolio ▶ Total equity", fmt(balance_summary['total_equity'], False))
+        st.metric("Portfolio ▶ Free equity", fmt(balance_summary["total_free_value"], False))
+        st.metric("Portfolio ▶ Frozen equity", fmt(balance_summary["total_frozen_value"], mismatch['total_frozen_value']))
+        st.metric("Order book ▶ Frozen equity", fmt(orders_summary["total_frozen_value"], mismatch['total_frozen_value']))
+    with c2:
+        st.metric("Portfolio ▶ Total cash", fmt(balance_summary["cash_total_value"], False))
+        st.metric("Portfolio ▶ Free cash", fmt(balance_summary["cash_free_value"], False))
+        st.metric("Portfolio ▶ Frozen cash", fmt(balance_summary["cash_frozen_value"], mismatch['cash_frozen_value']))
+        st.metric("Order book ▶ Frozen cash", fmt(orders_summary["cash_frozen_value"], mismatch['cash_frozen_value']))
+    with c3:
+        st.metric("Portfolio ▶ Total assets value", fmt(balance_summary["assets_total_value"], False))
+        st.metric("Portfolio ▶ Free assets value", fmt(balance_summary["assets_free_value"], False))
+        st.metric("Portfolio ▶ Frozen assets value", fmt(balance_summary["assets_frozen_value"], mismatch['assets_frozen_value']))
+        st.metric("Order book ▶ Frozen assets value", fmt(orders_summary["assets_frozen_value"], mismatch['assets_frozen_value']))

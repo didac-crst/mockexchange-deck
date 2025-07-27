@@ -8,7 +8,7 @@ from pathlib import Path
 from dotenv import load_dotenv
 
 from app.services.api import get_orders
-from ._helpers import _remove_small_zeros, _add_details_column
+from ._helpers import _remove_small_zeros, _add_details_column, _display_advanced_details
 from ._row_colors import _row_style
 
 load_dotenv(Path(__file__).parent.parent.parent / ".env")
@@ -47,13 +47,23 @@ def render() -> None:
     * Display the table with Streamlit’s dataframe component.
     * Highlight rows that changed in the **last 60 s** to draw attention.
     """
-    # params = st.query_params
-    # _page = params.get("page", None) # Override if provided
-    # if _page:
-    #     del st.query_params["page"]
 
     st.set_page_config(page_title="Order Book")
     st.title("Order Book")
+
+    # -- Sidebar filters --------------------------------------------------------
+    st.sidebar.header("Filters")
+    advanced_display = st.sidebar.checkbox(
+        "Display advanced details",
+        value=False,
+        key="advanced_display"
+    )
+    if advanced_display:
+        st.sidebar.info(
+            "Advanced details include total/free/used amounts, "
+            "for both cash and assets comparing portfolio and order book sources."
+        )
+        _display_advanced_details()
 
     # 0) --- add a toggle for “reset filters on every reload” ----
     reset_on_reload = st.sidebar.checkbox(
