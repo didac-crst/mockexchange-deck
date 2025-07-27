@@ -153,6 +153,11 @@ def render() -> None:
                 _sync_filter_state("side_filter",   side_opts)
                 _sync_filter_state("type_filter",   type_opts)
                 _sync_filter_state("asset_filter",  asset_opts)
+                # Reset the radio button for frozen filters
+                st.session_state["reset_status_filter"] = False
+                st.session_state["reset_side_filter"] = False
+                st.session_state["reset_type_filter"] = False
+                st.session_state["reset_asset_filter"] = False
                 st.rerun()
 
         with left:
