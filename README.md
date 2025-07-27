@@ -2,7 +2,7 @@
 *Streamlit front-end for the MockExchange paper-trading platform*
 
 > **Heads-up:** this repository only contains the **front-end**.  
-> The app requires a matching back-end — [**mockexchange-api**](<https://github.com/didac-crst/mockexchange-api) — running locally or remotely.
+> The app requires a matching back-end — [**mockexchange-api**](https://github.com/didac-crst/mockexchange-api) — running locally or remotely.
 
 ---
 
