@@ -37,6 +37,8 @@ _STATUS_LIGHT: dict[str, str] = {
     "partially_filled": "🔵",  # blue
     "filled": "🟢",  # green
     "partially_canceled": "🟡",  # yellow
+    "partially_rejected": "🟡",  # yellow
+    "partially_expired": "🟡",  # yellow
     "canceled": "🔴",  # red
     "rejected": "🔴",
     "expired": "🔴",
@@ -49,6 +51,8 @@ _BG0: dict[str, str] = {
     "partially_filled": "#11AAFF",  # blue
     "filled": "#00ff00",  # green
     "partially_canceled": "#fff700",  # yellow
+    "partially_rejected": "#fff700",  # yellow
+    "partially_expired": "#fff700",  # yellow
     "canceled": "#ff5555",  # red
     "rejected": "#ff5555",
     "expired": "#ff5555",
