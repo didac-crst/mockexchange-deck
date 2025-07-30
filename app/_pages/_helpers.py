@@ -149,33 +149,6 @@ def _format_significant_float(value: float | int | None, unity: str | None = Non
         formatted += f" {unity}"
 
     return formatted
-   
-        # Format with high precision and avoid trailing zeros
-        # s = f"{abs_value:.10f}".rstrip("0")
-        #
-        # if "." not in s:
-        # s += ".0"  # fallback for integer-looking floats
-        #
-        # _, decimal_part = s.split(".")
-
-        # Take first two significant digits
-        # sig_digits = ""
-        # non_zero_count = 0
-        # for digit in decimal_part:
-        # sig_digits += digit
-        # if digit != "0":
-        #    non_zero_count += 1
-        #    if non_zero_count == 2:
-        #      break
-        # 
-        # formatted = f"0.{sig_digits}"
-
-    # output = f"-{formatted}" if is_negative else formatted
-
-    # if unity:
-    #    output += f" {unity}"
-
-    #return output
 
 # -----------------------------------------------------------------------------
 # 3) Advanced equity breakdown helper
