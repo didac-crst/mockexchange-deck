@@ -20,8 +20,20 @@ from __future__ import annotations
 # -----------------------------------------------------------------------------
 # Third-party imports
 # -----------------------------------------------------------------------------
+import os
+from pathlib import Path
+from dotenv import load_dotenv
+
+
 import streamlit as st
 from streamlit_autorefresh import st_autorefresh
+
+# -----------------------------------------------------------------------------
+# Configuration
+# -----------------------------------------------------------------------------
+load_dotenv(Path(__file__).parent.parent / ".env")
+APP_TITLE = os.getenv("APP_TITLE", "")
+LOGO_FILE= os.getenv("LOGO_FILE", "")
 
 # -----------------------------------------------------------------------------
 # 0) Global page configuration – must run before any Streamlit call
@@ -29,7 +41,7 @@ from streamlit_autorefresh import st_autorefresh
 # * wide layout gives more room to tables
 # * keep the sidebar expanded by default so navigation is obvious
 st.set_page_config(
-    page_title="MockExchange Dashboard",
+    page_icon=":chart_with_upwards_trend:",  # Custom icon can be set
     layout="wide",
     initial_sidebar_state="expanded",
 )
@@ -43,8 +55,11 @@ from app._pages import portfolio, orders, order_details
 # -----------------------------------------------------------------------------
 # 1) Sidebar – navigation radio
 # -----------------------------------------------------------------------------
-
-st.sidebar.title("MockExchange")
+if LOGO_FILE != "":
+    LOGO_PATH = Path(__file__).parent / "misc" / LOGO_FILE
+    st.sidebar.image(LOGO_PATH, width=500)
+if APP_TITLE != "":
+    st.sidebar.title(APP_TITLE)
 
 # Index 1 (vs 0) pre-selects the second radio choice → "Order Book"
 # so heavy users land directly on the live order table.
