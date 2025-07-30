@@ -27,7 +27,7 @@ import streamlit as st
 
 # First‑party / project --------------------------------------------------------
 from app.services.api import get_balance
-from ._helpers import _remove_small_zeros, _display_advanced_details
+from ._helpers import _display_advanced_details, _format_significant_float
 
 # -----------------------------------------------------------------------------
 # Page renderer
@@ -122,9 +122,9 @@ def render() -> None:  # noqa: D401 – imperative mood is fine
     # 5) Pretty table below the chart
     # ------------------------------------------------------------------
     # Helper lambdas to keep formatting one‑liners tidy
-    fmt_amt = lambda x: _remove_small_zeros("{:,.6f}".format(x))  # noqa: E731
-    fmt_price = lambda x: f"{fmt_amt(x)} {data['quote_asset']}"  # noqa: E731
-    fmt_val = lambda x: f"{x:,.2f} {data['quote_asset']}"        # noqa: E731
+    fmt_amt = lambda x: _format_significant_float(x)  # noqa: E731
+    fmt_price = lambda x: _format_significant_float(x, data['quote_asset'])  # noqa: E731
+    fmt_val = lambda x: _format_significant_float(x, data['quote_asset'])  # noqa: E731
     fmt_pct = lambda x: f"{x*100:,.2f}%"                          # noqa: E731
 
     df_disp = df.copy()

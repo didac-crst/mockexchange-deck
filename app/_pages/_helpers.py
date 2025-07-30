@@ -28,6 +28,8 @@ from app.services.api import get_assets_overview
 # 1) Formatting helpers
 # -----------------------------------------------------------------------------
 
+ZERO_DISPLAY = "--"  # Default display for zero values
+
 def _remove_small_zeros(num_str: str) -> str:  # noqa: D401 – short desc fine
     """Strip redundant trailing zeros from a *decimal* string.
 
@@ -98,6 +100,67 @@ def _add_details_column(
     if not df.empty:
         df[new_col] = df[order_id_col].astype(str).map(make_url)
     return df
+
+def _format_significant_float(value: float | int | None, unity: str | None = None) -> str:
+    """
+    Format a float into a human-readable string with dynamic precision.
+
+    Behavior:
+    - For absolute values >= 1: formats with comma as thousands separator and 2 decimal places.
+      Example:  1234.6565  → "1,234.66"
+                -1234.6565 → "-1,234.66"
+
+    - For absolute values < 1: keeps leading zeros and shows the first 2 significant decimal digits.
+      Example:  
+                0.6565     → "0.66"
+               -0.06565    → "-0.066"
+                0.006565   → "0.0066"
+               -0.0006565  → "-0.00066"
+
+    - For exact zero (positive or negative): returns a fixed display (e.g. "0.00")
+
+    Args:
+        value (float | int | None): The number to format.
+        unity (str | None): Optional unit/currency suffix (e.g., "USD").
+
+    Returns:
+        str: The formatted number as a string.
+    """
+    if value is None or value == 0.0:
+        return ZERO_DISPLAY
+
+    is_negative = value < 0
+    abs_value = abs(value)
+
+    if abs_value >= 1:
+        formatted = f"{abs_value:,.2f}"
+    else:
+        # Format with high precision and avoid trailing zeros
+        s = f"{abs_value:.10f}".rstrip("0")
+
+        if "." not in s:
+            s += ".0"  # fallback for integer-looking floats
+
+        _, decimal_part = s.split(".")
+
+        # Take first two significant digits
+        sig_digits = ""
+        non_zero_count = 0
+        for digit in decimal_part:
+            sig_digits += digit
+            if digit != "0":
+                non_zero_count += 1
+            if non_zero_count == 2:
+                break
+
+        formatted = f"0.{sig_digits}"
+
+    output = f"-{formatted}" if is_negative else formatted
+
+    if unity:
+        output += f" {unity}"
+
+    return output
 
 # -----------------------------------------------------------------------------
 # 3) Advanced equity breakdown helper

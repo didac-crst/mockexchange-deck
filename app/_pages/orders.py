@@ -29,7 +29,7 @@ from app.services.api import get_orders
 from ._helpers import (
     _add_details_column,
     _display_advanced_details,
-    _remove_small_zeros,
+    _format_significant_float,
 )
 from ._colors import _row_style
 
@@ -282,60 +282,34 @@ def render() -> None:  # noqa: D401 – imperative mood is clearer here
     )
 
     # Human‑friendly quantity formatting (strip tiny rounding remainders)
-    df["Req. Qty"] = df["amount"].map(lambda v: _remove_small_zeros(f"{v:,.6f}"))
-    df["Filled Qty"] = df["actual_filled"].apply(
-        lambda v: _remove_small_zeros(f"{v:,.6f}") if pd.notna(v) else ""
-    )
+    df["Req. Qty"] = df["amount"].map(lambda v: _format_significant_float(value=v))
+    df["Filled Qty"] = df["actual_filled"].apply(lambda v: _format_significant_float(value=v))
 
     # Append currency codes where applicable
     df["Limit price"] = df.apply(
-        lambda r: (
-            f"{_remove_small_zeros(f'{r.limit_price:,.6f}')} {r.quote_asset}"
-            if pd.notna(r.limit_price)
-            else ""
-        ),
+        lambda r: _format_significant_float(value=r.limit_price, unity=r.quote_asset),
         axis=1,
     )
     df["Exec. price"] = df.apply(
-        lambda r: (
-            f"{_remove_small_zeros(f'{r.price:,.6f}')} {r.quote_asset}"
-            if pd.notna(r.price)
-            else ""
-        ),
+        lambda r: _format_significant_float(value=r.price, unity=r.quote_asset),
         axis=1,
     )
 
     # Notional & fee prettifiers ------------------------------------------------
     df["Reserved notional"] = df.apply(
-        lambda r: (
-            f"{r.reserved_notion_left:,.2f} {r.notion_currency}"
-            if pd.notna(r.reserved_notion_left)
-            else ""
-        ),
+        lambda r: _format_significant_float(value=r.reserved_notion_left, unity=r.notion_currency),
         axis=1,
     )
     df["Actual notional"] = df.apply(
-        lambda r: (
-            f"{r.actual_notion:,.2f} {r.notion_currency}"
-            if pd.notna(r.actual_notion)
-            else ""
-        ),
+        lambda r: _format_significant_float(value=r.actual_notion, unity=r.notion_currency),
         axis=1,
     )
     df["Reserved fee"] = df.apply(
-        lambda r: (
-            f"{r.reserved_fee_left:,.2f} {r.fee_currency}"
-            if pd.notna(r.reserved_fee_left)
-            else ""
-        ),
+        lambda r: _format_significant_float(value=r.reserved_fee_left, unity=r.fee_currency),
         axis=1,
     )
     df["Actual fee"] = df.apply(
-        lambda r: (
-            f"{r.actual_fee:,.2f} {r.fee_currency}"
-            if pd.notna(r.actual_fee)
-            else ""
-        ),
+        lambda r: _format_significant_float(value=r.actual_fee, unity=r.fee_currency),
         axis=1,
     )
 

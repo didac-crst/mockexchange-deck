@@ -28,7 +28,7 @@ import streamlit as st
 from dotenv import load_dotenv
 
 # First‑party ------------------------------------------------------------------
-from ._helpers import _remove_small_zeros
+from ._helpers import _format_significant_float
 from ._colors import _STATUS_LIGHT
 
 # -----------------------------------------------------------------------------
@@ -68,9 +68,9 @@ def render(order_id: str) -> None:  # noqa: D401
     # ------------------------------------------------------------------
     # Formatting lambdas (local closures keep code below concise)
     # ------------------------------------------------------------------
-    fmt = lambda v: _remove_small_zeros(f"{v:,.6f}")  # noqa: E731
-    fmt_notion = lambda v: f"{v:,.2f} {data.get('notion_currency')}"  # noqa: E731
-    fmt_fee = lambda v: f"{v:,.4f} {data.get('fee_currency')}"        # noqa: E731
+    fmt = lambda v: _format_significant_float(v)  # noqa: E731
+    fmt_notion = lambda v: _format_significant_float(v, data.get('notion_currency'))  # noqa: E731
+    fmt_fee = lambda v: _format_significant_float(v, data.get('fee_currency'))  # noqa: E731
 
     # ------------------------------------------------------------------
     # Back navigation – remove "order_id" query param and rerun main page
@@ -113,7 +113,7 @@ def render(order_id: str) -> None:  # noqa: D401
     # Type info → show limit price inline when applicable
     type_info = (
         f"{data.get('type').capitalize()} "
-        f"[{fmt(data.get('limit_price', 0))} {data.get('notion_currency')}]"
+        f"[{fmt_notion(data.get('limit_price', 0))}]"
         if data.get("type") == "limit"
         else data.get("type").capitalize()
     )
@@ -121,7 +121,7 @@ def render(order_id: str) -> None:  # noqa: D401
     # Average execution price (None or 0 ⇢ blank)
     _price = data.get("price", 0)
     price = (
-        f"{fmt(_price)} {data.get('notion_currency')}" if _price not in (None, 0) else None
+        fmt_notion(_price) if _price not in (None, 0) else None
     )
 
     # Time‑stamps -------------------------------------------------------
@@ -222,18 +222,25 @@ def render(order_id: str) -> None:  # noqa: D401
     records: list[dict] = []
     for step in sorted(history.keys(), key=int):
         rec = history[step]
+        price = fmt_notion(rec.get("price", None))
+        filled = fmt(rec.get("actual_filled", None))
+        remaining = fmt(rec.get("amount_remain", None))
+        actual_notion = fmt_notion(rec.get("actual_notion", None))
+        reserved_notion_left = fmt_notion(rec.get("reserved_notion_left", None))
+        actual_fee = fmt_fee(rec.get("actual_fee", None))
+        reserved_fee_left = fmt_fee(rec.get("reserved_fee_left", None))
         records.append(
             {
                 "Step": int(step),
                 "Time": _human_ts(rec.get("ts")),
                 "Status": rec.get("status").replace("_", " ").capitalize(),
-                "Price": rec.get("price") or "",
-                "Actual filled": rec.get("actual_filled") or "",
-                "Remaining": rec.get("amount_remain"),
-                "Actual Notional": rec.get("actual_notion"),
-                "Notional left": rec.get("reserved_notion_left"),
-                "Actual Fee": rec.get("actual_fee"),
-                "Fee left": rec.get("reserved_fee_left"),
+                "Price": price,
+                "Actual filled": filled,
+                "Remaining": remaining,
+                "Actual Notional": actual_notion,
+                "Notional left": reserved_notion_left,
+                "Actual Fee": actual_fee,
+                "Fee left": reserved_fee_left,
                 "Comment": rec.get("comment", ""),
             }
         )
@@ -243,6 +250,5 @@ def render(order_id: str) -> None:  # noqa: D401
     st.subheader("Order history")
     st.dataframe(df_hist, hide_index=True, use_container_width=True)
     st.markdown(
-        "This table shows the step‑by‑step history of the order, "
-        "including price changes, filled amounts, and any comments."
+        "This table shows the step‑by‑step history of the order."
     )
