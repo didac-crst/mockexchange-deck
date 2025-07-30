@@ -70,6 +70,9 @@ sh start_mockexchange.sh            # or: docker compose up -d
 | Variable               | Default                       | Purpose                                                     |
 |------------------------|-------------------------------|-------------------------------------------------------------|
 | `API_URL`              | `http://localhost:8000`       | Base URL of the MockExchange API server                     |
+| `UI_URL`                | `http://mockexchange.your-domain.com` | Base URL used to generate links in the frontend    |
+| `APP_TITLE`             | `MockExchange`                  | Title shown in the Streamlit browser tab and header      |
+| `LOGO_FILE`             | `logo.png`                      | Name of the logo image to display in the sidebar         |
 | `API_KEY`              | `dev-key`                     | Bearer key sent as `x-api-key` header                       |
 | `REFRESH_SECONDS`      | `60`                          | UI auto-refresh interval (seconds)                          |
 | `QUOTE_ASSET`          | `USDT`                        | Fiat or stablecoin used to value the portfolio              |
@@ -82,6 +85,27 @@ sh start_mockexchange.sh            # or: docker compose up -d
 
 All variables live in **`.env`** (see `.env.example`).  
 They are loaded via *python-dotenv* inside `app/config.py`.
+
+### 🎨 Sidebar customization
+
+You can customize the sidebar’s appearance using two environment variables:
+
+| Variable     | Behavior                                                                 |
+|--------------|--------------------------------------------------------------------------|
+| `APP_TITLE`  | Optional title shown at the **top of the sidebar**. If unset or empty, no title is shown. |
+| `LOGO_FILE`  | Filename of a logo image (e.g. `logo.png`) shown **above the sidebar title**. If unset, no image is shown. If set, the file **must exist** in the `misc/` folder at the **repo root**. |
+
+#### ⚠️ Important:
+- Create a `misc/` directory at the top level of the repo if it doesn’t exist:
+    ```bash
+    mkdir misc
+    ```
+- Save your logo image there, e.g. `misc/logo.png`.
+- Reference it in `.env` like so:
+    ```
+    LOGO_FILE=logo.png
+    ```
+- If `LOGO_FILE` is set but the file is missing or unreadable, an error will occur at runtime.
 
 ---
 
@@ -109,6 +133,7 @@ mockexchange_deck/
 │       ├── orders.py
 │       └── portfolio.py
 ├── docs/                        # Screenshots, diagrams, extra docs
+├── misc/                        ← !!! Folder to be created !!!
 └── LICENSE
 ```
 
