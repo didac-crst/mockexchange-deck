@@ -126,7 +126,7 @@ def _format_significant_float(value: float | int | None, unity: str | None = Non
     Returns:
         str: The formatted number as a string.
     """
-    if value is None or value == 0.0:
+    if value is None or pd.isna(value) or value == 0.0:
         return ZERO_DISPLAY
 
     is_negative = value < 0
