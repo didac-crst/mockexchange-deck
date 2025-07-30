@@ -55,3 +55,5 @@ junit-*.xml
 .pyre/
 # Mac resource forks
 ._*
+./misc/*.png
+./misc/*.jpg
