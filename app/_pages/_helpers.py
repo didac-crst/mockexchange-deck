@@ -18,6 +18,7 @@ Only **docstrings and comments** have been added; no functional changes.
 from __future__ import annotations
 
 # Third-party -----------------------------------------------------------------
+import math
 import pandas as pd
 import streamlit as st
 
