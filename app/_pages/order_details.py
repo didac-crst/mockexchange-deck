@@ -196,20 +196,24 @@ def render(order_id: str) -> None:  # noqa: D401
     col1, col2, col3 = st.columns(3)
 
     with col1:
-        st.metric("Asset ▶ Initial requested", fmt(initial_amount))
         st.metric("Asset ▶ Actual filled", fmt(filled_amount))
-        st.metric("Asset ▶ Missing", fmt(remaining_amount))
+        st.metric("Asset ▶ Initial requested", fmt(initial_amount))
+        if not is_finished:
+            st.metric("Asset ▶ Remaining", fmt(remaining_amount))
 
     with col2:
-        st.metric("Notional ▶ Initial booked", fmt_notion(initial_notion))
         actual_str = "Notional ▶ Actual paid" if side == "BUY" else "Notional ▶ Actual received"
         st.metric(actual_str, fmt_notion(actual_notion))
-        st.metric("Notional ▶ Still booked", fmt_notion(remaining_notion))
+        if side == "BUY":
+            st.metric("Notional ▶ Initial booked", fmt_notion(initial_notion))
+            if not is_finished:
+                st.metric("Notional ▶ Still booked", fmt_notion(remaining_notion))
 
     with col3:
-        st.metric("Fee ▶ Initial booked", fmt_fee(initial_fee))
         st.metric("Fee ▶ Actual paid", fmt_fee(actual_fee))
-        st.metric("Fee ▶ Still booked", fmt_fee(remaining_fee))
+        st.metric("Fee ▶ Initial booked", fmt_fee(initial_fee))
+        if not is_finished:
+            st.metric("Fee ▶ Still booked", fmt_fee(remaining_fee))
 
     st.markdown("---")
 
