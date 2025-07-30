@@ -135,32 +135,46 @@ def _format_significant_float(value: float | int | None, unity: str | None = Non
     if abs_value >= 1:
         formatted = f"{abs_value:,.2f}"
     else:
+        # true “round to two significant digits”:
+        # floor(log10(abs_value)) gives you the exponent of the leading sig‑digit.
+        exp = math.floor(math.log10(abs_value))
+        decimals = 2 - exp - 1
+        rounded = round(abs_value, decimals)
+        formatted = str(rounded)
+
+    if is_negative:
+        formatted = "-" + formatted
+    if unity:
+        formatted += f" {unity}"
+
+    return formatted
+   
         # Format with high precision and avoid trailing zeros
-        s = f"{abs_value:.10f}".rstrip("0")
-
-        if "." not in s:
-            s += ".0"  # fallback for integer-looking floats
-
-        _, decimal_part = s.split(".")
+        # s = f"{abs_value:.10f}".rstrip("0")
+        #
+        # if "." not in s:
+        # s += ".0"  # fallback for integer-looking floats
+        #
+        # _, decimal_part = s.split(".")
 
         # Take first two significant digits
-        sig_digits = ""
-        non_zero_count = 0
-        for digit in decimal_part:
-            sig_digits += digit
-            if digit != "0":
-                non_zero_count += 1
-            if non_zero_count == 2:
-                break
+        # sig_digits = ""
+        # non_zero_count = 0
+        # for digit in decimal_part:
+        # sig_digits += digit
+        # if digit != "0":
+        #    non_zero_count += 1
+        #    if non_zero_count == 2:
+        #      break
+        # 
+        # formatted = f"0.{sig_digits}"
 
-        formatted = f"0.{sig_digits}"
+    # output = f"-{formatted}" if is_negative else formatted
 
-    output = f"-{formatted}" if is_negative else formatted
+    # if unity:
+    #    output += f" {unity}"
 
-    if unity:
-        output += f" {unity}"
-
-    return output
+    #return output
 
 # -----------------------------------------------------------------------------
 # 3) Advanced equity breakdown helper
