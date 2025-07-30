@@ -129,6 +129,8 @@ def render(order_id: str) -> None:  # noqa: D401
     updated_ts = _human_ts(data.get("ts_update"))
     executed_ts = _human_ts(data.get("ts_finish")) if data.get("ts_finish") else None
 
+    is_new = _status == "new"
+    is_partial = "partially" in _status
     is_finished = executed_ts is not None
     latency = (
         f"{(data.get('ts_finish') - data.get('ts_create')) / 1000:,.2f} seconds"
@@ -158,7 +160,8 @@ def render(order_id: str) -> None:  # noqa: D401
     # Column 3 – timestamps & latency (or cancel button if open)
     with c3:
         st.metric("Created", placed_ts)
-        st.metric("Finished" if is_finished else "Updated", updated_ts)
+        if not is_new:
+            st.metric("Finished" if is_finished else "Updated", updated_ts)
         if is_finished:
             st.metric("Latency", latency)
         else:
@@ -198,7 +201,7 @@ def render(order_id: str) -> None:  # noqa: D401
     with col1:
         st.metric("Asset ▶ Actual filled", fmt(filled_amount))
         st.metric("Asset ▶ Initial requested", fmt(initial_amount))
-        if not is_finished:
+        if is_partial:
             st.metric("Asset ▶ Remaining", fmt(remaining_amount))
 
     with col2:
@@ -206,13 +209,13 @@ def render(order_id: str) -> None:  # noqa: D401
         st.metric(actual_str, fmt_notion(actual_notion))
         if side == "BUY":
             st.metric("Notional ▶ Initial booked", fmt_notion(initial_notion))
-            if not is_finished:
+            if is_partial:
                 st.metric("Notional ▶ Still booked", fmt_notion(remaining_notion))
 
     with col3:
         st.metric("Fee ▶ Actual paid", fmt_fee(actual_fee))
         st.metric("Fee ▶ Initial booked", fmt_fee(initial_fee))
-        if not is_finished:
+        if is_partial:
             st.metric("Fee ▶ Still booked", fmt_fee(remaining_fee))
 
     st.markdown("---")
