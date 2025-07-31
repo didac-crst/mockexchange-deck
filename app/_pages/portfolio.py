@@ -27,7 +27,7 @@ import streamlit as st
 
 # First‑party / project --------------------------------------------------------
 from app.services.api import get_balance
-from ._helpers import _display_advanced_details, _format_significant_float
+from ._helpers import _display_advanced_portfolio, _format_significant_float
 
 # -----------------------------------------------------------------------------
 # Page renderer
@@ -42,7 +42,7 @@ def render() -> None:  # noqa: D401 – imperative mood is fine
        *equity* and an ``assets_df`` DataFrame.
     2. If no positions exist, show an info box and bail out early.
     3. Offer an *advanced* toggle in the sidebar. When enabled we show a
-       granular breakdown through ``_display_advanced_details``.
+       granular breakdown through ``_display_advanced_portfolio``.
     4. Compute each asset's market value and relative share.
     5. Plot a donut‑style pie chart, collapsing slices < 1 % into
        **Other**.
@@ -85,7 +85,7 @@ def render() -> None:  # noqa: D401 – imperative mood is fine
         st.metric("Equity", equity_str)
     else:
         # Advanced mode displays a full cash/assets breakdown defined in helpers.
-        _display_advanced_details()
+        _display_advanced_portfolio()
 
     # ------------------------------------------------------------------
     # 3) Build a numeric DataFrame with helper columns

@@ -159,7 +159,7 @@ fmt_side_marker = lambda side: {"BUY": "↗ BUY", "SELL": "↘ SELL"}[side.upper
 
 _W = "⚠️"  # warning icon – reused inline for brevity
 
-def _display_advanced_details() -> None:  # noqa: D401
+def _display_advanced_portfolio() -> None:  # noqa: D401
     """Show an advanced *equity vs frozen* breakdown in three metric columns.
 
     Fetches the combined summary from ``/overview/assets`` (via

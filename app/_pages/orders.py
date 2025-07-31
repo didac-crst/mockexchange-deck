@@ -28,7 +28,6 @@ from dotenv import load_dotenv
 from app.services.api import get_orders
 from ._helpers import (
     _add_details_column,
-    _display_advanced_details,
     _display_advanced_trades,
     _format_significant_float,
     fmt_side_marker,
