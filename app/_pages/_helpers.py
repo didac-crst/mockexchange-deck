@@ -23,7 +23,7 @@ import pandas as pd
 import streamlit as st
 
 # Project ---------------------------------------------------------------------
-from app.services.api import get_assets_overview
+from app.services.api import get_assets_overview, get_trades_overview
 
 # -----------------------------------------------------------------------------
 # 1) Formatting helpers
@@ -157,6 +157,8 @@ fmt_side_marker = lambda side: {"BUY": "↗ BUY", "SELL": "↘ SELL"}[side.upper
 # 3) Advanced equity breakdown helper
 # -----------------------------------------------------------------------------
 
+_W = "⚠️"  # warning icon – reused inline for brevity
+
 def _display_advanced_details() -> None:  # noqa: D401
     """Show an advanced *equity vs frozen* breakdown in three metric columns.
 
@@ -166,8 +168,6 @@ def _display_advanced_details() -> None:  # noqa: D401
     flagged with a warning icon (⚠️) in front of the figure.
     """
 
-    _W = "⚠️"  # warning icon – reused inline for brevity
-
     summary = get_assets_overview()
     misc = summary.get("misc", {})
     cash_asset = misc.get("cash_asset", "")
@@ -176,7 +176,7 @@ def _display_advanced_details() -> None:  # noqa: D401
     # Local lambdas for consistent formatting ---------------------------
     fmt_cash = lambda v: f"{v:,.2f} {cash_asset}"  # noqa: E731
     fmt = (
-        lambda txt, m: f"{_W} {fmt_cash(txt)}" if m else fmt_cash(txt)
+        lambda txt, w: f"{_W} {fmt_cash(txt)}" if w else fmt_cash(txt)
     )  # noqa: E731 – add warning icon when mismatch True
 
     balance_summary = summary.get("balance_source", {})
@@ -231,3 +231,48 @@ def _display_advanced_details() -> None:  # noqa: D401
             "Order book ▶ Frozen assets value",
             fmt(orders_summary["assets_frozen_value"], mismatch["assets_frozen_value"]),
         )
+
+def _display_advanced_trades() -> None:  # noqa: D401
+    """
+    Show an advanced *trades summary* in three metric columns.
+
+    Fetches the combined summary from ``/overview/trades`` (via
+    ``get_trades_overview``), then prints a grid of **st.metric** widgets
+    comparing *total*, *buy*, and *sell* trades.  Any mismatch in the
+    total amount is flagged with a warning icon (⚠️) in front of the figure.
+    """
+
+    trades_summary, cash_asset= get_trades_overview()
+
+    # Local lambdas for consistent formatting ---------------------------
+    fmt_num = lambda v: f"{v:,.0f}"  # noqa: E731
+    fmt_cash = lambda v: f"{v:,.2f} {cash_asset}"  # noqa: E731
+    fmt_cash_w = (
+        lambda txt, w: f"{_W} {fmt_cash(txt)}" if w else fmt_cash(txt)
+    )  # noqa: E731 – add warning icon when mismatch True
+
+    # ------------------------------------------------------------------
+    # Render three metric columns (equity / cash / assets)
+    # ------------------------------------------------------------------
+    c1, c2, c3 = st.columns(3)
+
+    # Total trades ------------------------------------------------------------
+    with c1:
+        st.metric("Trades ▶ Total Count", fmt_num(trades_summary["TOTAL"]["count"]))
+        st.metric("Value ▶ Total Amount (Current Price)", fmt_cash_w(trades_summary["TOTAL"]["amount_value"], trades_summary["TOTAL"]["amount_value_incomplete"]))
+        st.metric("Notional ▶ Total", fmt_cash(trades_summary["TOTAL"]["notional"]))
+        st.metric("Fees ▶ Total", fmt_cash(trades_summary["TOTAL"]["fee"]))
+
+    # Buy trades --------------------------------------------------------------
+    with c2:
+        st.metric("Trades ▶ Buy Count", fmt_num(trades_summary["BUY"]["count"]))
+        st.metric("Value ▶ Buy Amount (Current Price)", fmt_cash_w(trades_summary["BUY"]["amount_value"], trades_summary["BUY"]["amount_value_incomplete"]))
+        st.metric("Notional ▶ Buy", fmt_cash(trades_summary["BUY"]["notional"]))
+        st.metric("Fees ▶ Buy", fmt_cash(trades_summary["BUY"]["fee"]))
+
+    # Sell trades ------------------------------------------------------------
+    with c3:
+        st.metric("Trades ▶ Sell Count", fmt_num(trades_summary["SELL"]["count"]))
+        st.metric("Value ▶ Sell Amount (Current Price)", fmt_cash_w(trades_summary["SELL"]["amount_value"], trades_summary["SELL"]["amount_value_incomplete"]))
+        st.metric("Notional ▶ Sell", fmt_cash(trades_summary["SELL"]["notional"]))
+        st.metric("Fees ▶ Sell", fmt_cash(trades_summary["SELL"]["fee"]))

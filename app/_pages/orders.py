@@ -29,6 +29,7 @@ from app.services.api import get_orders
 from ._helpers import (
     _add_details_column,
     _display_advanced_details,
+    _display_advanced_trades,
     _format_significant_float,
     fmt_side_marker,
 )
@@ -146,10 +147,13 @@ def render() -> None:  # noqa: D401 – imperative mood is clearer here
     )
     if advanced_display:
         st.sidebar.info(
-            "Advanced details include total/free/used amounts, "
-            "for both cash and assets comparing portfolio and order book sources."
+            "Trade metrics show total operations, notional spent/received, "
+            "and fees paid for BUY and SELL trades.\n\n"
+            "'Amount @ Market' reflects the current value of all assets bought, "
+            "converted to the selected quote using latest prices. "
+            "Useful to estimate unrealized exposure."
         )
-        _display_advanced_details()
+        _display_advanced_trades()
 
     # `df_copy` will be mutated for visual purposes; keep df_raw pristine.
     df_copy = df_raw.copy()

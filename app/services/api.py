@@ -189,3 +189,78 @@ def get_orders(status: str | None = None, tail: int = 50) -> pd.DataFrame:
 
     rows = _get(path)  # returns list[dict]
     return pd.DataFrame(rows)
+
+def get_trades_overview() -> tuple[dict, str]:
+    """Return the dict payload from `/overview/trades` with basic validation.
+    raw  – JSON you pasted above (already loaded to a dict)
+    quote – e.g. "USDT".  If None, we aggregate every quote we find.
+
+    Returns
+    -------
+    {
+        "BUY":  {"count": 3, "amount": 2675.819..., "notional": 2_170.011..., "fee": 1.627...},
+        "SELL": {"count": 1, "amount":  241.525..., "notional":   182.183..., "fee": 0.137...},
+        "TOTAL":{... BUY+SELL ...}
+    }
+    """
+    raw = _get("/overview/trades")
+    if not isinstance(raw, dict):
+        raise TypeError(f"Expected dict from /overview/trades, got {type(raw)}")
+    
+    # helper that finds out all the assets in the trades
+    def _find_assets_in_trades(raw: dict) -> set[str]:
+        assets = set()
+        for side in ("BUY", "SELL"):
+            side_block = raw.get(side, {})
+            for base, _ in side_block.get("amount", {}).items():
+                assets.add(base)
+        return assets
+
+    assets_in_trades = [base for base in _find_assets_in_trades(raw) if base != QUOTE]
+    # Here we are passing only the asset name and not the full pair like "BTC/USDT"
+    # In sum_metric we will only need the base asset name, not the quote.
+    last_prices = _prices_for(assets_in_trades) # noqa: D401
+
+    # helper that digs into one metric (count/amount/notional/fee)
+    def _sum_metric(side_block: dict, metric: str, last_prices: dict) -> float:
+        is_missing_price = False
+        total = 0.0
+        # side_block[metric] looks like  {"ADA":{"USDT":"…"}, "XRP":{"USDT":"…"}}
+        for base, q_dict in side_block[metric].items():
+            for q, val in q_dict.items():
+                if q != QUOTE:
+                    continue
+                if metric == "amount":
+                    # Convert amount to value in quote currency (e.g. USDT)
+                    try:
+                        last_price = last_prices[base]
+                    except KeyError:
+                        is_missing_price = True
+                        continue
+                    total += float(val) * last_price
+                else:
+                   total += float(val)
+        return total, is_missing_price
+
+    sides = ("BUY", "SELL")
+    out: dict[str, dict[str, float]] = {s: {} for s in sides}
+
+    for s in sides:
+        block = raw.get(s, {})
+        if not block:
+            continue
+        out[s]["count"], _ = _sum_metric(block, "count", last_prices)
+        out[s]["amount_value"], out[s]["amount_value_incomplete"] = _sum_metric(block, "amount", last_prices)
+        out[s]["notional"], _ = _sum_metric(block, "notional", last_prices)
+        out[s]["fee"], _ = _sum_metric(block, "fee", last_prices)
+
+    # grand-total across sides
+    out["TOTAL"] = {
+        k: out.get("BUY", {}).get(k, 0) + out.get("SELL", {}).get(k, 0)
+        for k in ("count", "amount_value", "notional", "fee")
+    }
+    out["TOTAL"]["amount_value_incomplete"] = bool(
+        out["BUY"]["amount_value_incomplete"] or
+        out["SELL"]["amount_value_incomplete"]
+    )
+    return out, QUOTE
