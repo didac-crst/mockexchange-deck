@@ -141,7 +141,7 @@ def _format_significant_float(value: float | int | None, unity: str | None = Non
         exp = math.floor(math.log10(abs_value))
         decimals = 2 - exp - 1
         rounded = round(abs_value, decimals)
-        formatted = str(rounded)
+        formatted = f"{rounded:.{decimals}f}"
 
     if is_negative:
         formatted = "-" + formatted
