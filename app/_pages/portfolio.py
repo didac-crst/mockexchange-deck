@@ -105,7 +105,7 @@ def render() -> None:  # noqa: D401 – imperative mood is fine
     major = df[df["share"] >= lim_min_share]
     other = df.loc[df["share"] < lim_min_share, "value"].sum()
 
-    pie_df = major[["asset", "value"]]
+    pie_df = major[["asset", "value"]].reset_index(drop=True)
     if other > 0:
         # Append the "Other" slice as a synthetic row
         pie_df.loc[len(pie_df)] = {"asset": "Other", "value": other}
@@ -163,3 +163,7 @@ def render() -> None:  # noqa: D401 – imperative mood is fine
             "share": st.column_config.TextColumn("Share (%)"),
         },
     )
+
+    # st.write("Debugging - pie_df:", pie_df)
+    # st.write("Debugging - data:", data)
+    # st.write("Top assets by share", df.sort_values("share", ascending=False).head(5))

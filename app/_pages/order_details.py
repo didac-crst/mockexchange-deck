@@ -28,7 +28,7 @@ import streamlit as st
 from dotenv import load_dotenv
 
 # First‑party ------------------------------------------------------------------
-from ._helpers import _format_significant_float
+from ._helpers import _format_significant_float, fmt_side_marker
 from ._colors import _STATUS_LIGHT
 
 # -----------------------------------------------------------------------------
@@ -104,7 +104,7 @@ def render(order_id: str) -> None:  # noqa: D401
     # ------------------------------------------------------------------
     ticker = data.get("symbol")
     asset = ticker.split("/")[0]
-    side = data.get("side").upper()
+    side = fmt_side_marker(data.get("side"))  # format side with arrow
 
     _status = data.get("status")
     status_light = _STATUS_LIGHT.get(_status, "⚪")  # coloured emoji bullet

@@ -150,6 +150,9 @@ def _format_significant_float(value: float | int | None, unity: str | None = Non
 
     return formatted
 
+
+fmt_side_marker = lambda side: {"BUY": "↗ BUY", "SELL": "↘ SELL"}[side.upper()]  # noqa: E731
+
 # -----------------------------------------------------------------------------
 # 3) Advanced equity breakdown helper
 # -----------------------------------------------------------------------------

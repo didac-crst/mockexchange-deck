@@ -30,6 +30,7 @@ from ._helpers import (
     _add_details_column,
     _display_advanced_details,
     _format_significant_float,
+    fmt_side_marker,
 )
 from ._colors import _row_style
 
@@ -318,7 +319,7 @@ def render() -> None:  # noqa: D401 – imperative mood is clearer here
     df["Exec. latency"] = df["Exec. latency"].apply(
         lambda v: f"{v:,.2f} s" if isinstance(v, (int, float)) else ""
     )
-    df["Side"] = df["side"].str.upper()
+    df["Side"] = df["side"].map(fmt_side_marker)
     df["Type"] = df["type"].str.capitalize()
     df["Status"] = df["status"].str.replace("_", " ").str.capitalize()
 
