@@ -19,6 +19,7 @@ from __future__ import annotations
 
 # Third-party -----------------------------------------------------------------
 import math
+from typing import Literal
 import pandas as pd
 import streamlit as st
 
@@ -163,8 +164,131 @@ def _format_significant_float(value: float | int | None, unity: str | None = Non
 
 fmt_side_marker = lambda side: {"BUY": "↗ BUY", "SELL": "↘ SELL"}[side.upper()]  # noqa: E731
 
+# -------------------------------------------------------------------------
+# 3) Streamlit metric helpers  (paste into _helpers.py or a new utils_metrics.py)
+# -------------------------------------------------------------------------
+
+def _mk_key(label: str) -> str:
+    """Stable session-state key from the metric label."""
+    return f"_prev_{label.replace(' ', '_').lower()}"
+
+def show_metric(
+    label: str,
+    value: float | None,
+    *,
+    value_type: Literal["integer", "percent", "normal"] = "normal",
+    unit: str = "",
+    incomplete: bool = False,
+    # delta options ---------------------------------------------------
+    baseline: float | None = None,          # None  → compare to last run
+    delta_fmt: Literal["raw", None] = "raw",
+    delta_color_rule: Literal["value", "delta"] = "value",
+    # value-colour options -------------------------------------------
+    neutral_100: bool = False,              # treat <1 as red
+    bad_if_neg: bool = True,
+    incomplete_display: bool = False,         # Metric to display when incomplete occurs
+) -> None:
+    """
+    Print one st.metric with colour & delta handled.
+
+    Parameters
+    ----------
+    label : str
+        Label shown above the number.
+    value : float | None
+        Latest value. None → prints ZERO_DISPLAY and skips delta.
+    value_type: Literal["integer", "percent", "normal"]
+        How to format the main value.
+    unit : str
+        Suffix (e.g. "€", "×", "%", "USDT").
+    incomplete : bool
+        If True, show ⚠️ icon before the figure.
+    baseline : float | None
+        Reference value. If None, use the value stored in session_state.
+    delta_fmt : Literal["raw", "percent", None]
+        How to format the delta column.
+    delta_color_rule : Literal["value", "delta"]
+        • "value"  → red/green based on *value* (e.g. multiples <1 red)
+        • "delta"  → red/green based on *delta* sign.
+    neutral_100 : bool
+        Treat 100% as break-even when colouring the value.
+    bad_if_neg : bool
+        For non-multiple values: colour red if value < 0.
+    incomplete_display : bool
+        Records with True, will only be displayed if incomplete is True.
+    """
+    # ---- format main value -----------------------------------------
+    if value is None:
+        txt_value = ZERO_DISPLAY
+    else:
+        if value_type == "integer":
+            txt_value = f"{value:.0f}{unit}"
+        elif value_type == "percent":
+            if abs(value) < 1:
+                txt_value = f"{value:.2%}"
+            else:
+                txt_value = f"{value:.2f}×"
+
+        elif value_type == "normal":
+            txt_value = f"{value:,.2f}{unit}"
+        else:
+            raise ValueError(f"Unknown value_type: {value_type}")
+        if incomplete:
+            txt_value = f"{_W} {txt_value}"
+    # ---- compute & format delta ------------------------------------
+    delta_raw = None
+    key = _mk_key(label)
+    ref = baseline if baseline is not None else st.session_state.get(key)
+
+    if value is not None and ref is not None and delta_fmt:
+        delta_raw = value - ref
+        if delta_fmt == "raw":
+            if value_type == "integer":
+                delta_display = f"{delta_raw:+.0f}{unit}"
+            elif value_type == "percent":
+                delta_display = f"{delta_raw:+.2%}"
+            elif value_type == "normal":
+                delta_display = f"{delta_raw:+.2f}{unit}"
+        else:
+            delta_display = None
+    else:
+        delta_display = None
+
+    # ---- decide arrow colour ---------------------------------------
+    if delta_display is None:
+        delta_color = "off"
+    elif delta_color_rule in ("normal", "inverse"):
+        delta_color = delta_color_rule
+    else:
+        delta_color = "off"  # default to off if unknown
+
+    # ---- store for next call ---------------------------------------
+    st.session_state[key] = value
+
+    # ---- render -----------------------------------------------------
+    if incomplete_display:
+        if not incomplete:
+            return  # skip rendering if incomplete is False
+        # If incomplete is True, show the incomplete_display value.
+    st.metric(label, txt_value, delta_display, delta_color=delta_color)
+
+def show_metrics_bulk(column, specs: list[dict]) -> None:
+    """
+    Print a list of metrics into the given Streamlit *column*.
+
+    specs = [
+        {"label": "Multiple ▶ RVPI", "value": rvpi, "is_multiple": True},
+        {"label": "P&L ▶ Net", "value": net_earnings, "unit": " €"},
+        ...
+    ]
+    """
+    with column:
+        for spec in specs:
+            show_metric(**spec)
+
+
 # -----------------------------------------------------------------------------
-# 3) Advanced equity breakdown helper
+# 4) Advanced equity breakdown helper
 # -----------------------------------------------------------------------------
 
 def _display_advanced_portfolio_details() -> None:  # noqa: D401
@@ -188,52 +312,39 @@ def _display_advanced_portfolio_details() -> None:  # noqa: D401
     # Render three metric columns (equity / cash / assets)
     # ------------------------------------------------------------------
     c1, c2, c3 = st.columns(3)
-    st.markdown("---")
 
     # Equity ------------------------------------------------------------
-    with c1:
-        st.metric("Portfolio ▶ Total equity", fmt_cash(balance_summary["total_equity"], cash_asset))
-        st.metric("Portfolio ▶ Free equity", fmt_cash(balance_summary["total_free_value"], cash_asset))
-        st.metric(
-            "Portfolio ▶ Frozen equity",
-            fmt_cash(balance_summary["total_frozen_value"], cash_asset, mismatch["total_frozen_value"]),
-        )
-        st.metric(
-            "Order book ▶ Frozen equity",
-            fmt_cash(orders_summary["total_frozen_value"], cash_asset, mismatch["total_frozen_value"]),
-        )
-
+    specs1 = [
+        {"label": "Equity ▶ Total", "value": balance_summary["total_equity"], "unit": cash_asset, "delta_fmt": "raw", "delta_color_rule": "normal"},
+        {"label": "Equity ▶ Free", "value": balance_summary["total_free_value"], "unit": cash_asset, "delta_fmt": "raw", "delta_color_rule": "normal"},
+        {"label": "Equity ▶ Frozen", "value": balance_summary["total_frozen_value"], "unit": cash_asset, "incomplete": mismatch["total_frozen_value"], "delta_fmt": "raw", "delta_color_rule": "off"},
+        {"label": "Equity ▶ Frozen [Order book]", "value": orders_summary["total_frozen_value"], "unit": cash_asset, "incomplete": mismatch["total_frozen_value"], "delta_fmt": "raw", "delta_color_rule": "off", "incomplete_display": True}
+    ]
     # Cash --------------------------------------------------------------
-    with c2:
-        st.metric("Portfolio ▶ Total cash", fmt_cash(balance_summary["cash_total_value"], cash_asset))
-        st.metric("Portfolio ▶ Free cash", fmt_cash(balance_summary["cash_free_value"], cash_asset))
-        st.metric(
-            "Portfolio ▶ Frozen cash",
-            fmt_cash(balance_summary["cash_frozen_value"], cash_asset, mismatch["cash_frozen_value"]),
-        )
-        st.metric(
-            "Order book ▶ Frozen cash",
-            fmt_cash(orders_summary["cash_frozen_value"], cash_asset, mismatch["cash_frozen_value"]),
-        )
-
+    specs2 = [
+        {"label": "Cash ▶ Total", "value": balance_summary["cash_total_value"], "unit": cash_asset, "delta_fmt": "raw", "delta_color_rule": "normal"},
+        {"label": "Cash ▶ Free", "value": balance_summary["cash_free_value"], "unit": cash_asset, "delta_fmt": "raw", "delta_color_rule": "normal"},
+        {"label": "Cash ▶ Frozen", "value": balance_summary["cash_frozen_value"], "unit": cash_asset, "incomplete": mismatch["cash_frozen_value"], "delta_fmt": "raw", "delta_color_rule": "off"},
+        {"label": "Cash ▶ Frozen [Order book]", "value": orders_summary["cash_frozen_value"], "unit": cash_asset, "incomplete": mismatch["cash_frozen_value"], "delta_fmt": "raw", "delta_color_rule": "off", "incomplete_display": True}
+    ]
     # Assets ------------------------------------------------------------
-    with c3:
-        st.metric(
-            "Portfolio ▶ Total assets value",
-            fmt_cash(balance_summary["assets_total_value"], cash_asset),
-        )
-        st.metric(
-            "Portfolio ▶ Free assets value",
-            fmt_cash(balance_summary["assets_free_value"], cash_asset),
-        )
-        st.metric(
-            "Portfolio ▶ Frozen assets value",
-            fmt_cash(balance_summary["assets_frozen_value"], cash_asset, mismatch["assets_frozen_value"]),
-        )
-        st.metric(
-            "Order book ▶ Frozen assets value",
-            fmt_cash(orders_summary["assets_frozen_value"], cash_asset, mismatch["assets_frozen_value"]),
-        )
+    specs3 = [
+        {"label": "Assets Value ▶ Total", "value": balance_summary["assets_total_value"], "unit": cash_asset, "delta_fmt": "raw", "delta_color_rule": "normal"},
+        {"label": "Assets Value ▶ Free", "value": balance_summary["assets_free_value"], "unit": cash_asset, "delta_fmt": "raw", "delta_color_rule": "normal"},
+        {"label": "Assets Value ▶ Frozen", "value": balance_summary["assets_frozen_value"], "unit": cash_asset, "incomplete": mismatch["assets_frozen_value"], "delta_fmt": "raw", "delta_color_rule": "off"},
+        {"label": "Assets Value ▶ Frozen [Order book]", "value": orders_summary["assets_frozen_value"], "unit": cash_asset, "incomplete": mismatch["assets_frozen_value"], "delta_fmt": "raw", "delta_color_rule": "off", "incomplete_display": True}
+    ]
+
+
+    show_metrics_bulk(c1, specs1)
+    show_metrics_bulk(c2, specs2)
+    show_metrics_bulk(c3, specs3)
+
+    st.markdown("---")
+
+# -----------------------------------------------------------------------------
+# 5) Trades summary helpers - Basic
+# -----------------------------------------------------------------------------
 
 def _display_basic_trades_details(trades_summary: dict, cash_asset:str) -> None:
     """
@@ -281,80 +392,44 @@ def _display_basic_trades_details(trades_summary: dict, cash_asset:str) -> None:
     # ------------------------------------------------------------------
     c1, c2, c3 = st.columns(3)
 
-    # ────────────────────────────────────────────────────────────────
-    # Column 1 · Cash & P&L figures
-    # ────────────────────────────────────────────────────────────────
-    with c1:
-        st.metric(
-            "Value ▶ Open Positions",
-            fmt_cash(market_value_open, cash_asset, incomplete_data)
+    # Column 1 - Cash & P&L figures -----------------------------------------
+    specs1 = [
+        {"label": "Value ▶ Open Positions", "value": market_value_open, "unit": cash_asset, "delta_fmt": "raw", "delta_color_rule": "normal"},
+        {"label": "P&L ▶ Net (After Fees)", "value": net_earnings, "unit": cash_asset, "incomplete": incomplete_data, "delta_fmt": "raw", "delta_color_rule": "normal"},
+        {"label": "P&L ▶ Gross (Before Fees)", "value": gross_earnings, "unit": cash_asset, "incomplete": incomplete_data, "delta_fmt": "raw", "delta_color_rule": "normal"},
+    ]
+    # Column 2 - ROI on current risk -----------------------------------------
+    specs2 = [
+        {"label": "Capital ▶ At Risk (Cost)", "value": actual_investment, "unit": cash_asset, "delta_fmt": "raw", "delta_color_rule": "normal"},
+    ]
+    if actual_investment > 0 or assets_current_value > 0:
+        specs2.append(
+            {"label": "ROI ▶ Net on Cost", "value": net_roi_on_cost, "value_type": "percent", "delta_fmt": "raw", "incomplete": incomplete_data, "delta_color_rule": "normal"}
         )
-        st.metric(
-            "P&L ▶ Net (After Fees)",
-            fmt_cash(net_earnings, cash_asset, incomplete_data)
+        specs2.append(
+            {"label": "ROI ▶ Gross on Cost", "value": gross_roi_on_cost, "value_type": "percent", "delta_fmt": "raw", "incomplete": incomplete_data, "delta_color_rule": "normal"}
         )
-        st.metric(
-            "P&L ▶ Gross (Before Fees)",
-            fmt_cash(gross_earnings, cash_asset, incomplete_data)
+    else:
+        specs2.append(
+            {"label": "ROI ▶ Net on Value", "value": net_roi_on_value, "value_type": "percent", "delta_fmt": "raw", "incomplete": incomplete_data, "delta_color_rule": "normal"}
         )
+        specs2.append(
+            {"label": "ROI ▶ Gross on Value", "value": gross_roi_on_value, "value_type": "percent", "delta_fmt": "raw", "incomplete": incomplete_data, "delta_color_rule": "normal"}
+        )
+    # Column 3 - Multiples as % returns -----------------------------------------
+    specs3 = [
+        {"label": "Multiple ▶ RVPI (Residual Value to Paid-In)", "value": rvpi_gross, "value_type": "percent", "delta_fmt": "raw", "incomplete": incomplete_data, "delta_color_rule": "normal"},
+        {"label": "Multiple ▶ DPI (Distributions to Paid-In)", "value": dpi_gross, "value_type": "percent", "delta_fmt": "raw", "incomplete": incomplete_data, "delta_color_rule": "normal"},
+        {"label": "Multiple ▶ MOIC (Multiple on Invested Capital)", "value": moic_gross, "value_type": "percent", "delta_fmt": "raw", "incomplete": incomplete_data, "delta_color_rule": "normal"}
+    ]
 
-    # ────────────────────────────────────────────────────────────────
-    # Column 2 · ROI on current risk
-    # ────────────────────────────────────────────────────────────────
-    with c2:
-        display_roi = True
-        if actual_investment > 0:
-            net_roi_title = "ROI ▶ Net on Cost"
-            net_roi = net_roi_on_cost
-            gross_roi_title = "ROI ▶ Gross on Cost"
-            gross_roi = gross_roi_on_cost
-        elif assets_current_value > 0:
-            # If no investment was made, but we have a current value,
-            # show ROI on that value instead.
-            display_roi = True
-            net_roi_title = "ROI ▶ Net on Value"
-            net_roi = net_roi_on_value
-            gross_roi_title = "ROI ▶ Gross on Value"
-            gross_roi = gross_roi_on_value
-        else:
-            display_roi = False
+    show_metrics_bulk(c1, specs1)
+    show_metrics_bulk(c2, specs2)
+    show_metrics_bulk(c3, specs3)
 
-        st.metric(
-            "Capital ▶ At Risk (Cost)",
-            fmt_cash(actual_investment, cash_asset, incomplete_data)
-        )
-        if not display_roi:
-            st.warning(
-                "No ROI data available. "
-                "Either no trades were made or the current value is zero."
-            )
-        else:
-            # Show ROI metrics only if we have a valid investment or current value.
-            st.metric(
-                net_roi_title,
-                fmt_percent(net_roi, incomplete_data) if net_roi is not None else ZERO_DISPLAY
-            )
-            st.metric(
-                gross_roi_title,
-                fmt_percent(gross_roi, incomplete_data) if gross_roi is not None else ZERO_DISPLAY
-            )
-
-    # ────────────────────────────────────────────────────────────────
-    # Column 3 · Multiples as % returns (0 % = break-even)
-    # ────────────────────────────────────────────────────────────────
-    with c3:
-        st.metric(
-            "Multiple ▶ RVPI (Residual Value to Paid-In)",
-            fmt_percent(rvpi_gross, incomplete_data) if rvpi_gross is not None else ZERO_DISPLAY
-        )
-        st.metric(
-            "Multiple ▶ DPI (Distributions to Paid-In)",
-            fmt_percent(dpi_gross, incomplete_data) if dpi_gross is not None else ZERO_DISPLAY
-        )
-        st.metric(
-            "Multiple ▶ MOIC (Multiple on Invested Capital)",
-            fmt_percent(moic_gross, incomplete_data) if moic_gross is not None else ZERO_DISPLAY
-        )
+# -----------------------------------------------------------------------------
+# 6) Trades summary helpers - Advanced
+# -----------------------------------------------------------------------------
 
 def _display_advanced_trades_details(trades_summary: dict, cash_asset:str) -> None:  # noqa: D401
     """
@@ -384,29 +459,25 @@ def _display_advanced_trades_details(trades_summary: dict, cash_asset:str) -> No
     st.markdown("---")
     c1, c2, c3 = st.columns(3)
 
-    # -----------------------------------------------------------------
-    # Column 1 · All orders
-    # -----------------------------------------------------------------
-    with c1:
-        st.metric("Notional ▶ Traded (All)",         fmt_cash(total_traded, cash_asset))
-        st.metric("Orders   ▶ Count (All)",          fmt_num(total_orders))
-        st.metric("Avg. Order Size ▶ All",            fmt_cash(avg_trade_price_order, cash_asset))
-        st.metric("Fees     ▶ Paid (All)",           fmt_cash(trades_summary["TOTAL"]["fee"], cash_asset))
+    specs1 = [
+        {"label": "GLOBAL ▶ Notional Traded", "value": total_traded, "unit": cash_asset, "delta_fmt": "raw", "delta_color_rule": "off"},
+        {"label": "GLOBAL ▶ Orders Count", "value": total_orders, "delta_fmt": "raw", "delta_color_rule": "off", "value_type": "integer"},
+        {"label": "GLOBAL ▶ Avg. Order Size", "value": avg_trade_price_order, "unit": cash_asset, "delta_fmt": "raw", "delta_color_rule": "off"},
+        {"label": "GLOBAL ▶ Paid Fees", "value": trades_summary["TOTAL"]["fee"], "unit": cash_asset, "delta_fmt": "raw", "delta_color_rule": "inverse"}
+    ]
+    specs2 = [
+        {"label": "BUY ▶ Notional Invested", "value": total_investment, "unit": cash_asset, "delta_fmt": "raw", "delta_color_rule": "off"},
+        {"label": "BUY ▶ Orders Count", "value": count_buy_orders, "delta_fmt": "raw", "delta_color_rule": "off", "value_type": "integer"},
+        {"label": "BUY ▶ Avg. Order Size", "value": avg_buy_price_order, "unit": cash_asset, "delta_fmt": "raw", "delta_color_rule": "off"},
+        {"label": "BUY ▶ Paid Fees", "value": trades_summary["BUY"]["fee"], "unit": cash_asset, "delta_fmt": "raw", "delta_color_rule": "inverse"}
+    ]
+    specs3 = [
+        {"label": "SELL ▶ Notional Divested", "value": total_divestment, "unit": cash_asset, "delta_fmt": "raw", "delta_color_rule": "off"},
+        {"label": "SELL ▶ Orders Count", "value": count_sell_orders, "delta_fmt": "raw", "delta_color_rule": "off", "value_type": "integer"},
+        {"label": "SELL ▶ Avg. Order Size", "value": avg_sell_price_order, "unit": cash_asset, "delta_fmt": "raw", "delta_color_rule": "off"},
+        {"label": "SELL ▶ Paid Fees", "value": trades_summary["SELL"]["fee"], "unit": cash_asset, "delta_fmt": "raw", "delta_color_rule": "inverse"}
+    ]
 
-    # -----------------------------------------------------------------
-    # Column 2 · Buy side
-    # -----------------------------------------------------------------
-    with c2:
-        st.metric("Notional ▶ Invested (Buy)",       fmt_cash(total_investment, cash_asset))
-        st.metric("Orders   ▶ Count (Buy)",          fmt_num(count_buy_orders))
-        st.metric("Avg. Order Size ▶ Buy",            fmt_cash(avg_buy_price_order, cash_asset))
-        st.metric("Fees     ▶ Paid (Buy)",           fmt_cash(trades_summary["BUY"]["fee"], cash_asset))
-
-    # -----------------------------------------------------------------
-    # Column 3 · Sell side
-    # -----------------------------------------------------------------
-    with c3:
-        st.metric("Notional ▶ Divested (Sell)",      fmt_cash(total_divestment, cash_asset))
-        st.metric("Orders   ▶ Count (Sell)",         fmt_num(count_sell_orders))
-        st.metric("Avg. Order Size ▶ Sell",           fmt_cash(avg_sell_price_order, cash_asset))
-        st.metric("Fees     ▶ Paid (Sell)",          fmt_cash(trades_summary["SELL"]["fee"], cash_asset))
+    show_metrics_bulk(c1, specs1)
+    show_metrics_bulk(c2, specs2)
+    show_metrics_bulk(c3, specs3)
