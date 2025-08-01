@@ -396,7 +396,7 @@ def _display_basic_trades_details(trades_summary: dict, cash_asset:str) -> None:
 
     # Column 1 - Cash & P&L figures -----------------------------------------
     specs1 = [
-        {"label": "Value ▶ Open Positions", "value": market_value_open, "unit": cash_asset, "delta_fmt": "raw", "delta_color_rule": "normal"},
+        {"label": "Market Value ▶ Open Positions", "value": market_value_open, "unit": cash_asset, "delta_fmt": "raw", "delta_color_rule": "normal"},
         {"label": "P&L ▶ Net (After Fees)", "value": net_earnings, "unit": cash_asset, "incomplete": incomplete_data, "delta_fmt": "raw", "delta_color_rule": "normal"},
         {"label": "P&L ▶ Gross (Before Fees)", "value": gross_earnings, "unit": cash_asset, "incomplete": incomplete_data, "delta_fmt": "raw", "delta_color_rule": "normal"},
     ]
@@ -415,6 +415,8 @@ def _display_basic_trades_details(trades_summary: dict, cash_asset:str) -> None:
             {"label": "ROI ▶ Net on Value", "value": net_roi_on_value, "value_type": "percent", "delta_fmt": "raw", "incomplete": incomplete_data, "delta_color_rule": "normal"},
             {"label": "ROI ▶ Gross on Value", "value": gross_roi_on_value, "value_type": "percent", "delta_fmt": "raw", "incomplete": incomplete_data, "delta_color_rule": "normal"},
         ]
+    else:
+        specs2 = []
     # Column 3 - Multiples as % returns -----------------------------------------
     specs3 = [
         {"label": "Multiple ▶ RVPI (Residual Value to Paid-In)", "value": rvpi_gross, "value_type": "percent", "delta_fmt": "raw", "incomplete": incomplete_data, "delta_color_rule": "normal"},
