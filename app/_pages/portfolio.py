@@ -135,11 +135,14 @@ def render() -> None:  # noqa: D401 – imperative mood is fine
     df_disp["value"] = df["value"].map(fmt_val)
     df_disp["share"] = df["share"].map(fmt_pct)
 
+    # Dynamic height: ~35 px per row, but cap at 800 px for usability.
+    height_calc = min(35 * (1 + len(df_disp)) + 5, 800)
+
     st.dataframe(
         df_disp,
         hide_index=True,
         use_container_width=True,
-        height=600,
+        height=height_calc,
         column_order=[
             "asset",
             "free",
