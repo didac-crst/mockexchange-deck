@@ -103,4 +103,4 @@ st.sidebar.markdown("---")
 # ────────────────────────────────────────────────────────────────
 utc_now = datetime.now(timezone.utc).strftime(TS_FMT)
 # Put it wherever you like: sidebar, main body, or page footer
-st.sidebar.caption(f"🕒 **UTC:** {utc_now}")
+st.sidebar.markdown(f"### 🕒 **UTC:** {utc_now}")
