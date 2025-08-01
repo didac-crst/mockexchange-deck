@@ -27,7 +27,7 @@ import streamlit as st
 
 # First‑party / project --------------------------------------------------------
 from app.services.api import get_balance
-from ._helpers import _display_advanced_portfolio, _format_significant_float
+from ._helpers import _display_advanced_portfolio_details, _format_significant_float
 
 # -----------------------------------------------------------------------------
 # Page renderer
@@ -85,7 +85,7 @@ def render() -> None:  # noqa: D401 – imperative mood is fine
         st.metric("Equity", equity_str)
     else:
         # Advanced mode displays a full cash/assets breakdown defined in helpers.
-        _display_advanced_portfolio()
+        _display_advanced_portfolio_details()
 
     # ------------------------------------------------------------------
     # 3) Build a numeric DataFrame with helper columns

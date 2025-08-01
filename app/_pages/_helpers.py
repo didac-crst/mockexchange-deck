@@ -167,7 +167,7 @@ fmt_side_marker = lambda side: {"BUY": "↗ BUY", "SELL": "↘ SELL"}[side.upper
 # 3) Advanced equity breakdown helper
 # -----------------------------------------------------------------------------
 
-def _display_advanced_portfolio() -> None:  # noqa: D401
+def _display_advanced_portfolio_details() -> None:  # noqa: D401
     """Show an advanced *equity vs frozen* breakdown in three metric columns.
 
     Fetches the combined summary from ``/overview/assets`` (via
@@ -356,7 +356,7 @@ def _display_basic_trades_details(trades_summary: dict, cash_asset:str) -> None:
             fmt_percent(moic_gross, incomplete_data) if moic_gross is not None else ZERO_DISPLAY
         )
 
-def _display_advanced_trades(trades_summary: dict, cash_asset:str) -> None:  # noqa: D401
+def _display_advanced_trades_details(trades_summary: dict, cash_asset:str) -> None:  # noqa: D401
     """
     Show an advanced *trades summary* in three metric columns.
 
