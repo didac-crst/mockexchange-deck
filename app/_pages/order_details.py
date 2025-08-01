@@ -28,7 +28,7 @@ import streamlit as st
 from dotenv import load_dotenv
 
 # First‑party ------------------------------------------------------------------
-from ._helpers import _format_significant_float, fmt_side_marker, update_page
+from ._helpers import _format_significant_float, fmt_side_marker, update_page, _human_ts
 from ._colors import _STATUS_LIGHT
 
 # -----------------------------------------------------------------------------
@@ -36,21 +36,6 @@ from ._colors import _STATUS_LIGHT
 # -----------------------------------------------------------------------------
 load_dotenv(Path(__file__).parent.parent.parent / ".env")
 API_BASE = os.getenv("API_BASE", "http://localhost:8000")  # REST back‑end
-
-# -----------------------------------------------------------------------------
-# Helpers
-# -----------------------------------------------------------------------------
-
-def _human_ts(ms: int | None) -> str:  # noqa: D401 – short description fine
-    """Convert *epoch‑milliseconds* (UTC) → local ``YYYY‑MM‑DD HH:MM:SS`` string.
-
-    Returns an empty string for ``None`` so dataframe cells stay blank.
-    """
-    if ms is None:
-        return ""
-    dt = datetime.fromtimestamp(ms / 1000, tz=timezone.utc).astimezone()
-    return dt.strftime("%Y-%m-%d %H:%M:%S")
-
 
 # -----------------------------------------------------------------------------
 # Page renderer

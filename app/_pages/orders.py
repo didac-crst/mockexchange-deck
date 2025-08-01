@@ -18,7 +18,6 @@ reference for new contributors.
 
 import os
 import time  # noqa: F401  # imported for completeness – not used directly yet
-from datetime import datetime, timezone
 from pathlib import Path
 
 import pandas as pd
@@ -27,11 +26,13 @@ from dotenv import load_dotenv
 
 from app.services.api import get_orders, get_trades_overview
 from ._helpers import (
+    _human_ts,
     _add_details_column,
     _display_basic_trades_details,
     _display_advanced_trades_details,
     _format_significant_float,
     fmt_side_marker,
+    TS_FMT,
 )
 from ._colors import _row_style
 
@@ -52,30 +53,6 @@ SLIDER_MIN = int(os.getenv("SLIDER_MIN", 10))
 SLIDER_MAX = int(os.getenv("SLIDER_MAX", 1000))
 SLIDER_STEP = int(os.getenv("SLIDER_STEP", 10))
 SLIDER_DEFAULT = int(os.getenv("SLIDER_DEFAULT", 100))
-
-
-# -----------------------------------------------------------------------------
-# Helper functions
-# -----------------------------------------------------------------------------
-
-def _human_ts(ms: int | None) -> str:  # noqa: D401 – keep short description style
-    """Convert **epoch‑milliseconds** to the user's local time‑zone.
-
-    Parameters
-    ----------
-    ms : int | None
-        Milliseconds since *Unix epoch* (UTC) or ``None``.
-
-    Returns
-    -------
-    str
-        Formatted timestamp ``YYYY‑MM‑DD HH:MM:SS`` or an empty string
-        so the dataframe cell renders blank for ``null`` values.
-    """
-    if ms is None:
-        return ""
-    dt = datetime.fromtimestamp(ms / 1000, tz=timezone.utc).astimezone()
-    return dt.strftime("%Y-%m-%d %H:%M:%S")
 
 
 # -----------------------------------------------------------------------------
@@ -384,24 +361,24 @@ def render() -> None:  # noqa: D401 – imperative mood is clearer here
         use_container_width=True,
         height=height_calc,
         column_config={
-            "Order ID":          st.column_config.TextColumn("Order ID"),
-            "Asset":             st.column_config.TextColumn("Asset"),
-            "Side":              st.column_config.TextColumn("Side"),
-            "Type":              st.column_config.TextColumn("Type"),
-            "Status":            st.column_config.TextColumn("Status"),
-            "Posted":            st.column_config.DatetimeColumn("Posted",
-                                                                format="YY-MM-DD HH:mm:ss"),
-            "Updated":           st.column_config.DatetimeColumn("Updated",
-                                                                format="YY-MM-DD HH:mm:ss"),
-            "Req. Qty":          st.column_config.TextColumn("Req. Qty"),
-            "Limit price":       st.column_config.TextColumn("Limit price"),
-            "Reserved notional": st.column_config.TextColumn("Reserved notional"),
-            "Reserved fee":      st.column_config.TextColumn("Reserved fee"),
-            "Filled Qty":        st.column_config.TextColumn("Filled Qty"),
-            "Actual notional":   st.column_config.TextColumn("Actual notional"),
-            "Actual fee":        st.column_config.TextColumn("Actual fee"),
-            "Exec. price":       st.column_config.TextColumn("Exec. price"),
-            "Exec. latency":     st.column_config.TextColumn("Exec. latency"),
+            # "Order ID":          st.column_config.TextColumn("Order ID"),
+            # "Asset":             st.column_config.TextColumn("Asset"),
+            # "Side":              st.column_config.TextColumn("Side"),
+            # "Type":              st.column_config.TextColumn("Type"),
+            # "Status":            st.column_config.TextColumn("Status"),
+            # "Posted":            st.column_config.DatetimeColumn("Posted",
+            #                                                     format=TS_FMT),
+            # "Updated":           st.column_config.DatetimeColumn("Updated",
+            #                                                     format=TS_FMT),
+            # "Req. Qty":          st.column_config.TextColumn("Req. Qty"),
+            # "Limit price":       st.column_config.TextColumn("Limit price"),
+            # "Reserved notional": st.column_config.TextColumn("Reserved notional"),
+            # "Reserved fee":      st.column_config.TextColumn("Reserved fee"),
+            # "Filled Qty":        st.column_config.TextColumn("Filled Qty"),
+            # "Actual notional":   st.column_config.TextColumn("Actual notional"),
+            # "Actual fee":        st.column_config.TextColumn("Actual fee"),
+            # "Exec. price":       st.column_config.TextColumn("Exec. price"),
+            # "Exec. latency":     st.column_config.TextColumn("Exec. latency"),
             # render the URL as a clickable link
             "Details": st.column_config.LinkColumn(
                 label=" ",

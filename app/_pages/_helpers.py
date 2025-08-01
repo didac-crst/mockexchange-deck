@@ -20,6 +20,7 @@ from __future__ import annotations
 # Third-party -----------------------------------------------------------------
 import math
 from typing import Literal
+from datetime import datetime, timezone
 import pandas as pd
 import streamlit as st
 
@@ -40,6 +41,7 @@ def update_page(page: None | str = None) -> None:
 # 1) Formatting helpers
 # -----------------------------------------------------------------------------
 
+TS_FMT = "%d/%m %H:%M:%S"  # Timestamp format for human-readable dates
 ZERO_DISPLAY = "--"  # Default display for zero values
 _W = "⚠️"  # warning icon – reused inline for brevity
 
@@ -48,9 +50,26 @@ _W = "⚠️"  # warning icon – reused inline for brevity
 fmt_num = lambda v, warning = False: f"{v:,.0f}" if not warning else f"^{_W} {v:,.0f}"
 fmt_percent = lambda v, warning = False: f"{v:.2%}" if not warning else f"^{_W} {v:.2%}"
 fmt_cash = lambda v, cash_asset, warning = False: f"{v:,.2f} {cash_asset}" if not warning else f"^{_W} {v:,.2f} {cash_asset}"
-# fmt_cash_w = (
-#     lambda txt, w, cash_asset: f"^{_W} {fmt_cash(txt, cash_asset)}" if w else fmt_cash(txt, cash_asset)
-# )  # noqa: E731 – add warning icon when mismatch True
+
+def _human_ts(ms: int | None) -> str:  # noqa: D401 – keep short description style
+    """Convert **epoch‑milliseconds** to the user's local time‑zone.
+
+    Parameters
+    ----------
+    ms : int | None
+        Milliseconds since *Unix epoch* (UTC) or ``None``.
+
+    Returns
+    -------
+    str
+        Formatted timestamp ``YYYY-MM-DD HH:MM:SS`` or an empty string
+        so the dataframe cell renders blank for ``null`` values.
+    """
+
+    if ms is None:
+        return ""
+    dt = datetime.fromtimestamp(ms / 1000, tz=timezone.utc).astimezone()
+    return dt.strftime(TS_FMT)
 
 def _remove_small_zeros(num_str: str) -> str:  # noqa: D401 – short desc fine
     """Strip redundant trailing zeros from a *decimal* string.

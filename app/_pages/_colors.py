@@ -24,9 +24,12 @@ from __future__ import annotations
 # -----------------------------------------------------------------------------
 import time
 from typing import Tuple, Dict, List
+from datetime import datetime, timezone
 
 # Third-party
 import pandas as pd
+
+from ._helpers import TS_FMT  # noqa: F401 – used in _row_style
 
 # -----------------------------------------------------------------------------
 # PUBLIC CONSTANTS – status → emoji / colour
@@ -165,9 +168,26 @@ def _row_style(
         t_update = (
             upd.timestamp() if isinstance(upd, pd.Timestamp) else pd.to_datetime(upd).timestamp()
         )
-    except Exception:
-        # Column missing or unparsable timestamp – no styling.
-        return [""] * len(row)
+    except ValueError:
+    # 2️⃣ Fallback: handle bare "MM/DD HH:MM:SS"
+        try:
+            # attach current UTC year
+            now_utc = datetime.now(timezone.utc)
+
+            parsed   = datetime.strptime(row["Updated"], TS_FMT).replace(
+                year=now_utc.year, tzinfo=timezone.utc
+            )
+
+            # if we’re in January and the parsed date is in December,
+            # roll it back one year (cross-year edge-case)
+            if now_utc.month == 1 and parsed.month == 12:
+                parsed = parsed.replace(year=parsed.year - 1)
+
+            t_update = parsed.timestamp()
+
+        except Exception:
+            # Column missing or unparsable timestamp – no styling.
+            return [""] * len(row)
 
     age = time.time() - t_update
 

@@ -51,7 +51,7 @@ st.set_page_config(
 # -----------------------------------------------------------------------------
 from app.config import settings
 from app._pages import portfolio, orders, order_details
-from app._pages._helpers import update_page  # noqa: F401
+from app._pages._helpers import update_page, TS_FMT  # noqa: F401
 
 # -----------------------------------------------------------------------------
 # 1) Sidebar – navigation radio
@@ -96,10 +96,11 @@ else:
         portfolio.render()
     else:  # page == "Order Book"
         orders.render()
-
+        
+st.sidebar.markdown("---")
 # ────────────────────────────────────────────────────────────────
 # UTC clock (updates on every autorefresh)
 # ────────────────────────────────────────────────────────────────
-utc_now = datetime.now(timezone.utc).strftime("%d/%m %H:%M:%S UTC")
+utc_now = datetime.now(timezone.utc).strftime(TS_FMT)
 # Put it wherever you like: sidebar, main body, or page footer
 st.sidebar.caption(f"🕒 **UTC:** {utc_now}")
