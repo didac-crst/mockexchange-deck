@@ -126,11 +126,7 @@ def render() -> None:  # noqa: D401 – imperative mood is clearer here
     )
     if advanced_display:
         st.sidebar.info(
-            "Trade metrics show total operations, notional spent/received, "
-            "and fees paid for BUY and SELL trades.\n\n"
-            "'Amount @ Market' reflects the current value of all assets bought, "
-            "converted to the selected quote using latest prices. "
-            "Useful to estimate unrealized exposure."
+            "Advanced details include metrics concerning total/buy/sell trades."
         )
         _display_advanced_trades_details(trades_summary, cash_asset)
     else:
