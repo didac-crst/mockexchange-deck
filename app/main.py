@@ -51,6 +51,7 @@ st.set_page_config(
 # -----------------------------------------------------------------------------
 from app.config import settings
 from app._pages import portfolio, orders, order_details
+from app._pages._helpers import update_page  # noqa: F401
 
 # -----------------------------------------------------------------------------
 # 1) Sidebar – navigation radio
@@ -61,20 +62,20 @@ if LOGO_FILE != "":
 if APP_TITLE != "":
     st.sidebar.title(APP_TITLE)
 
-# Index 1 (vs 0) pre-selects the second radio choice → "Order Book"
-# so heavy users land directly on the live order table.
-default_idx = 1
-
 # Pull current URL parameters as early as possible
-params = st.query_params
-oid: str | None = params.get("order_id", None)
+params = st.query_params                     # returns a QueryParamsProxy
+oid    = params.get("order_id")              # already a single value (or None)
+
+# Default to portfolio if param missing
+initial_page = params.get("page", "Portfolio")
 
 # Two-page app: Portfolio ↔ Order Book
 page = st.sidebar.radio(
     "Navigate",
     ("Portfolio", "Order Book"),
-    index=default_idx,
+    index=["Portfolio", "Order Book"].index(initial_page),
     key="sidebar_page",
+    on_change=update_page                   # <-- call the helper above
 )
 
 # -----------------------------------------------------------------------------

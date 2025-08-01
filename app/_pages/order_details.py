@@ -28,7 +28,7 @@ import streamlit as st
 from dotenv import load_dotenv
 
 # First‑party ------------------------------------------------------------------
-from ._helpers import _format_significant_float, fmt_side_marker
+from ._helpers import _format_significant_float, fmt_side_marker, update_page
 from ._colors import _STATUS_LIGHT
 
 # -----------------------------------------------------------------------------
@@ -78,6 +78,7 @@ def render(order_id: str) -> None:  # noqa: D401
     if st.button("← Back to Order Book"):
         if "order_id" in st.query_params:
             del st.query_params["order_id"]
+            update_page(page="Order Book")  # update query params
         st.rerun()
 
     # ------------------------------------------------------------------

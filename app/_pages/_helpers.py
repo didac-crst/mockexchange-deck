@@ -27,6 +27,16 @@ import streamlit as st
 from app.services.api import get_assets_overview, get_trades_overview
 
 # -----------------------------------------------------------------------------
+# 0) Global page configuration – must run before any Streamlit call
+# -----------------------------------------------------------------------------
+def update_page(page: None | str = None) -> None:
+    # This overwrites/sets the ?page=... query-param
+    if page is None:
+        st.query_params.update(page=st.session_state.sidebar_page)
+    else:
+        st.query_params.update(page=page)
+
+# -----------------------------------------------------------------------------
 # 1) Formatting helpers
 # -----------------------------------------------------------------------------
 
@@ -75,7 +85,7 @@ def _add_details_column(
     *,
     order_id_col: str = "id",
     new_col: str = "Details",
-    path_template: str = "?order_id={oid}&page=Orders",
+    path_template: str = "?order_id={oid}",
     text: str = "🔍",
 ) -> pd.DataFrame:  # noqa: D401 – keep same signature
     """Append a column with **HTML links** to the order-details page.
