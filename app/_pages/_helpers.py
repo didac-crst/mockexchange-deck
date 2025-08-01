@@ -222,14 +222,14 @@ def show_metric(
         txt_value = ZERO_DISPLAY
     else:
         if value_type == "integer":
-            txt_value = f"{value:.0f}{unit}"
+            txt_value = f"{value:,.0f}{unit}"
         elif value_type == "percent":
             if abs(value) < 2:
                 # When value is less than 2% it is shown as a percentage
-                txt_value = f"{value:.2%}"
+                txt_value = f"{value:,.2%}"
             else:
                 # When value is greater than 2% it is shown as a multiple
-                txt_value = f"{value:.2f}×"
+                txt_value = f"{value:,.2f}×"
 
         elif value_type == "normal":
             txt_value = f"{value:,.2f}{unit}"
@@ -246,11 +246,11 @@ def show_metric(
         delta_raw = value - ref
         if delta_fmt == "raw":
             if value_type == "integer":
-                delta_display = f"{delta_raw:+.0f}{unit}"
+                delta_display = f"{delta_raw:+,.0f}{unit}"
             elif value_type == "percent":
-                delta_display = f"{delta_raw:+.2%}"
+                delta_display = f"{delta_raw:+,.2%}"
             elif value_type == "normal":
-                delta_display = f"{delta_raw:+.2f}{unit}"
+                delta_display = f"{delta_raw:+,.2f}{unit}"
         else:
             delta_display = None
     else:
@@ -324,15 +324,15 @@ def _display_advanced_portfolio_details() -> None:  # noqa: D401
     ]
     # Cash --------------------------------------------------------------
     specs2 = [
-        {"label": "Cash ▶ Total", "value": balance_summary["cash_total_value"], "unit": cash_asset, "delta_fmt": "raw", "delta_color_rule": "normal"},
-        {"label": "Cash ▶ Free", "value": balance_summary["cash_free_value"], "unit": cash_asset, "delta_fmt": "raw", "delta_color_rule": "normal"},
+        {"label": "Cash ▶ Total", "value": balance_summary["cash_total_value"], "unit": cash_asset, "delta_fmt": "raw", "delta_color_rule": "off"},
+        {"label": "Cash ▶ Free", "value": balance_summary["cash_free_value"], "unit": cash_asset, "delta_fmt": "raw", "delta_color_rule": "off"},
         {"label": "Cash ▶ Frozen", "value": balance_summary["cash_frozen_value"], "unit": cash_asset, "incomplete": mismatch["cash_frozen_value"], "delta_fmt": "raw", "delta_color_rule": "off"},
         {"label": "Cash ▶ Frozen [Order book]", "value": orders_summary["cash_frozen_value"], "unit": cash_asset, "incomplete": mismatch["cash_frozen_value"], "delta_fmt": "raw", "delta_color_rule": "off", "incomplete_display": True}
     ]
     # Assets ------------------------------------------------------------
     specs3 = [
-        {"label": "Assets Value ▶ Total", "value": balance_summary["assets_total_value"], "unit": cash_asset, "delta_fmt": "raw", "delta_color_rule": "normal"},
-        {"label": "Assets Value ▶ Free", "value": balance_summary["assets_free_value"], "unit": cash_asset, "delta_fmt": "raw", "delta_color_rule": "normal"},
+        {"label": "Assets Value ▶ Total", "value": balance_summary["assets_total_value"], "unit": cash_asset, "delta_fmt": "raw", "delta_color_rule": "off"},
+        {"label": "Assets Value ▶ Free", "value": balance_summary["assets_free_value"], "unit": cash_asset, "delta_fmt": "raw", "delta_color_rule": "off"},
         {"label": "Assets Value ▶ Frozen", "value": balance_summary["assets_frozen_value"], "unit": cash_asset, "incomplete": mismatch["assets_frozen_value"], "delta_fmt": "raw", "delta_color_rule": "off"},
         {"label": "Assets Value ▶ Frozen [Order book]", "value": orders_summary["assets_frozen_value"], "unit": cash_asset, "incomplete": mismatch["assets_frozen_value"], "delta_fmt": "raw", "delta_color_rule": "off", "incomplete_display": True}
     ]
@@ -396,7 +396,7 @@ def _display_basic_trades_details(trades_summary: dict, cash_asset:str) -> None:
 
     # Column 1 - Cash & P&L figures -----------------------------------------
     specs1 = [
-        {"label": "Market Value ▶ Open Positions", "value": market_value_open, "unit": cash_asset, "delta_fmt": "raw", "delta_color_rule": "normal"},
+        {"label": "Market Value ▶ Open Positions", "value": market_value_open, "unit": cash_asset, "delta_fmt": "raw", "delta_color_rule": "off"},
         {"label": "P&L ▶ Net (After Fees)", "value": net_earnings, "unit": cash_asset, "incomplete": incomplete_data, "delta_fmt": "raw", "delta_color_rule": "normal"},
         {"label": "P&L ▶ Gross (Before Fees)", "value": gross_earnings, "unit": cash_asset, "incomplete": incomplete_data, "delta_fmt": "raw", "delta_color_rule": "normal"},
     ]
@@ -404,7 +404,7 @@ def _display_basic_trades_details(trades_summary: dict, cash_asset:str) -> None:
 
     if actual_investment > 0:
         specs2 = [
-            {"label": "Capital ▶ At Risk (Cost)", "value": actual_investment, "unit": cash_asset, "delta_fmt": "raw", "delta_color_rule": "normal"},
+            {"label": "Capital ▶ At Risk (Cost)", "value": actual_investment, "unit": cash_asset, "delta_fmt": "raw", "delta_color_rule": "off"},
             {"label": "ROI ▶ Net on Cost", "value": net_roi_on_cost, "value_type": "percent", "delta_fmt": "raw", "incomplete": incomplete_data, "delta_color_rule": "normal"},
             {"label": "ROI ▶ Gross on Cost", "value": gross_roi_on_cost, "value_type": "percent", "delta_fmt": "raw", "incomplete": incomplete_data, "delta_color_rule": "normal"},
         ]
@@ -419,8 +419,8 @@ def _display_basic_trades_details(trades_summary: dict, cash_asset:str) -> None:
         specs2 = []
     # Column 3 - Multiples as % returns -----------------------------------------
     specs3 = [
-        {"label": "Multiple ▶ RVPI (Residual Value to Paid-In)", "value": rvpi_gross, "value_type": "percent", "delta_fmt": "raw", "incomplete": incomplete_data, "delta_color_rule": "normal"},
-        {"label": "Multiple ▶ DPI (Distributions to Paid-In)", "value": dpi_gross, "value_type": "percent", "delta_fmt": "raw", "incomplete": incomplete_data, "delta_color_rule": "normal"},
+        {"label": "Multiple ▶ RVPI (Residual Value to Paid-In)", "value": rvpi_gross, "value_type": "percent", "delta_fmt": "raw", "incomplete": incomplete_data, "delta_color_rule": "off"},
+        {"label": "Multiple ▶ DPI (Distributions to Paid-In)", "value": dpi_gross, "value_type": "percent", "delta_fmt": "raw", "incomplete": incomplete_data, "delta_color_rule": "off"},
         {"label": "Multiple ▶ MOIC (Multiple on Invested Capital)", "value": moic_gross, "value_type": "percent", "delta_fmt": "raw", "incomplete": incomplete_data, "delta_color_rule": "normal"}
     ]
 
@@ -464,19 +464,19 @@ def _display_advanced_trades_details(trades_summary: dict, cash_asset:str) -> No
         {"label": "GLOBAL ▶ Notional Traded", "value": total_traded, "unit": cash_asset, "delta_fmt": "raw", "delta_color_rule": "off"},
         {"label": "GLOBAL ▶ Orders Count", "value": total_orders, "delta_fmt": "raw", "delta_color_rule": "off", "value_type": "integer"},
         {"label": "GLOBAL ▶ Avg. Order Size", "value": avg_trade_price_order, "unit": cash_asset, "delta_fmt": "raw", "delta_color_rule": "off"},
-        {"label": "GLOBAL ▶ Paid Fees", "value": trades_summary["TOTAL"]["fee"], "unit": cash_asset, "delta_fmt": "raw", "delta_color_rule": "inverse"}
+        {"label": "GLOBAL ▶ Paid Fees", "value": trades_summary["TOTAL"]["fee"], "unit": cash_asset, "delta_fmt": "raw", "delta_color_rule": "off"}
     ]
     specs2 = [
         {"label": "BUY ▶ Notional Invested", "value": total_investment, "unit": cash_asset, "delta_fmt": "raw", "delta_color_rule": "off"},
         {"label": "BUY ▶ Orders Count", "value": count_buy_orders, "delta_fmt": "raw", "delta_color_rule": "off", "value_type": "integer"},
         {"label": "BUY ▶ Avg. Order Size", "value": avg_buy_price_order, "unit": cash_asset, "delta_fmt": "raw", "delta_color_rule": "off"},
-        {"label": "BUY ▶ Paid Fees", "value": trades_summary["BUY"]["fee"], "unit": cash_asset, "delta_fmt": "raw", "delta_color_rule": "inverse"}
+        {"label": "BUY ▶ Paid Fees", "value": trades_summary["BUY"]["fee"], "unit": cash_asset, "delta_fmt": "raw", "delta_color_rule": "off"}
     ]
     specs3 = [
         {"label": "SELL ▶ Notional Divested", "value": total_divestment, "unit": cash_asset, "delta_fmt": "raw", "delta_color_rule": "off"},
         {"label": "SELL ▶ Orders Count", "value": count_sell_orders, "delta_fmt": "raw", "delta_color_rule": "off", "value_type": "integer"},
         {"label": "SELL ▶ Avg. Order Size", "value": avg_sell_price_order, "unit": cash_asset, "delta_fmt": "raw", "delta_color_rule": "off"},
-        {"label": "SELL ▶ Paid Fees", "value": trades_summary["SELL"]["fee"], "unit": cash_asset, "delta_fmt": "raw", "delta_color_rule": "inverse"}
+        {"label": "SELL ▶ Paid Fees", "value": trades_summary["SELL"]["fee"], "unit": cash_asset, "delta_fmt": "raw", "delta_color_rule": "off"}
     ]
 
     show_metrics_bulk(c1, specs1)
