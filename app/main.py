@@ -23,7 +23,7 @@ from __future__ import annotations
 import os
 from pathlib import Path
 from dotenv import load_dotenv
-
+from datetime import datetime, timezone   #  ← add datetime import
 
 import streamlit as st
 from streamlit_autorefresh import st_autorefresh
@@ -96,3 +96,10 @@ else:
         portfolio.render()
     else:  # page == "Order Book"
         orders.render()
+
+# ────────────────────────────────────────────────────────────────
+# UTC clock (updates on every autorefresh)
+# ────────────────────────────────────────────────────────────────
+utc_now = datetime.now(timezone.utc).strftime("%d/%m %H:%M:%S UTC")
+# Put it wherever you like: sidebar, main body, or page footer
+st.sidebar.caption(f"🕒 **UTC:** {utc_now}")
