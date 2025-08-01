@@ -224,9 +224,11 @@ def show_metric(
         if value_type == "integer":
             txt_value = f"{value:.0f}{unit}"
         elif value_type == "percent":
-            if abs(value) < 1:
+            if abs(value) < 2:
+                # When value is less than 2% it is shown as a percentage
                 txt_value = f"{value:.2%}"
             else:
+                # When value is greater than 2% it is shown as a multiple
                 txt_value = f"{value:.2f}×"
 
         elif value_type == "normal":
@@ -382,8 +384,8 @@ def _display_basic_trades_details(trades_summary: dict, cash_asset:str) -> None:
     total_investment = total_investment if total_investment or total_investment > 0 else None  # avoid division by zero
 
     # --- multiples (gross) --------------------------------------------
-    dpi_gross  = total_divestment / total_investment if total_investment else None # DPI = Distributions to Paid-In
     rvpi_gross = assets_current_value / total_investment if total_investment else None # RVPI = Residual Value to Paid-In
+    dpi_gross  = total_divestment / total_investment if total_investment else None # DPI = Distributions to Paid-In
     moic_gross = dpi_gross + rvpi_gross if None not in (dpi_gross, rvpi_gross) else None # MOIC = Multiple on Invested Capital
 
     # Total trades ------------------------------------------------------------
@@ -399,23 +401,20 @@ def _display_basic_trades_details(trades_summary: dict, cash_asset:str) -> None:
         {"label": "P&L ▶ Gross (Before Fees)", "value": gross_earnings, "unit": cash_asset, "incomplete": incomplete_data, "delta_fmt": "raw", "delta_color_rule": "normal"},
     ]
     # Column 2 - ROI on current risk -----------------------------------------
-    specs2 = [
-        {"label": "Capital ▶ At Risk (Cost)", "value": actual_investment, "unit": cash_asset, "delta_fmt": "raw", "delta_color_rule": "normal"},
-    ]
-    if actual_investment > 0 or assets_current_value > 0:
-        specs2.append(
-            {"label": "ROI ▶ Net on Cost", "value": net_roi_on_cost, "value_type": "percent", "delta_fmt": "raw", "incomplete": incomplete_data, "delta_color_rule": "normal"}
-        )
-        specs2.append(
-            {"label": "ROI ▶ Gross on Cost", "value": gross_roi_on_cost, "value_type": "percent", "delta_fmt": "raw", "incomplete": incomplete_data, "delta_color_rule": "normal"}
-        )
-    else:
-        specs2.append(
-            {"label": "ROI ▶ Net on Value", "value": net_roi_on_value, "value_type": "percent", "delta_fmt": "raw", "incomplete": incomplete_data, "delta_color_rule": "normal"}
-        )
-        specs2.append(
-            {"label": "ROI ▶ Gross on Value", "value": gross_roi_on_value, "value_type": "percent", "delta_fmt": "raw", "incomplete": incomplete_data, "delta_color_rule": "normal"}
-        )
+
+    if actual_investment > 0:
+        specs2 = [
+            {"label": "Capital ▶ At Risk (Cost)", "value": actual_investment, "unit": cash_asset, "delta_fmt": "raw", "delta_color_rule": "normal"},
+            {"label": "ROI ▶ Net on Cost", "value": net_roi_on_cost, "value_type": "percent", "delta_fmt": "raw", "incomplete": incomplete_data, "delta_color_rule": "normal"},
+            {"label": "ROI ▶ Gross on Cost", "value": gross_roi_on_cost, "value_type": "percent", "delta_fmt": "raw", "incomplete": incomplete_data, "delta_color_rule": "normal"},
+        ]
+    elif assets_current_value > 0:
+        free_carry_surplus = abs(actual_investment)
+        specs2 = [
+            {"label": "Capital ▶ Free Carry Surplus", "value": free_carry_surplus, "unit": cash_asset, "delta_fmt": "raw", "delta_color_rule": "normal"},
+            {"label": "ROI ▶ Net on Value", "value": net_roi_on_value, "value_type": "percent", "delta_fmt": "raw", "incomplete": incomplete_data, "delta_color_rule": "normal"},
+            {"label": "ROI ▶ Gross on Value", "value": gross_roi_on_value, "value_type": "percent", "delta_fmt": "raw", "incomplete": incomplete_data, "delta_color_rule": "normal"},
+        ]
     # Column 3 - Multiples as % returns -----------------------------------------
     specs3 = [
         {"label": "Multiple ▶ RVPI (Residual Value to Paid-In)", "value": rvpi_gross, "value_type": "percent", "delta_fmt": "raw", "incomplete": incomplete_data, "delta_color_rule": "normal"},
