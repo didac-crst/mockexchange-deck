@@ -104,7 +104,9 @@ def render(order_id: str) -> None:  # noqa: D401
     # ------------------------------------------------------------------
     ticker = data.get("symbol")
     asset = ticker.split("/")[0]
-    side = fmt_side_marker(data.get("side"))  # format side with arrow
+    side = data.get("side")
+    is_buy = (side == "buy")
+    arrow_side = fmt_side_marker(side)  # format side with arrow
 
     _status = data.get("status")
     status_light = _STATUS_LIGHT.get(_status, "⚪")  # coloured emoji bullet
@@ -142,7 +144,7 @@ def render(order_id: str) -> None:  # noqa: D401
     # 1) Overview metrics (three columns)
     # ------------------------------------------------------------------
     st.set_page_config(page_title=f"Order {order_id}")
-    st.header(f"{status_light} {side} Order #{order_id} [{ticker}]")
+    st.header(f"{status_light} {arrow_side} Order #{order_id} [{ticker}]")
 
     c1, c2, c3 = st.columns(3)
 
@@ -205,9 +207,9 @@ def render(order_id: str) -> None:  # noqa: D401
             st.metric("Asset ▶ Remaining", fmt(remaining_amount))
 
     with col2:
-        actual_str = "Notional ▶ Actual paid" if side == "BUY" else "Notional ▶ Actual received"
+        actual_str = "Notional ▶ Actual paid" if is_buy else "Notional ▶ Actual received"
         st.metric(actual_str, fmt_notion(actual_notion))
-        if side == "BUY":
+        if is_buy:
             st.metric("Notional ▶ Initial booked", fmt_notion(initial_notion))
             if is_partial:
                 st.metric("Notional ▶ Still booked", fmt_notion(remaining_notion))
