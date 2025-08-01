@@ -25,9 +25,10 @@ import pandas as pd
 import streamlit as st
 from dotenv import load_dotenv
 
-from app.services.api import get_orders
+from app.services.api import get_orders, get_trades_overview
 from ._helpers import (
     _add_details_column,
+    _display_basic_trades_details,
     _display_advanced_trades,
     _format_significant_float,
     fmt_side_marker,
@@ -136,6 +137,8 @@ def render() -> None:  # noqa: D401 – imperative mood is clearer here
     if df_raw.empty:
         st.info("No orders found.")
         return  # early exit – nothing else to do
+    
+    trades_summary, cash_asset = get_trades_overview()
 
     # ------------------------------------------------------------------
     # Sidebar – advanced equity breakdown & toggle
@@ -152,7 +155,9 @@ def render() -> None:  # noqa: D401 – imperative mood is clearer here
             "converted to the selected quote using latest prices. "
             "Useful to estimate unrealized exposure."
         )
-        _display_advanced_trades()
+        _display_advanced_trades(trades_summary, cash_asset)
+    else:
+        _display_basic_trades_details(trades_summary, cash_asset)
 
     # `df_copy` will be mutated for visual purposes; keep df_raw pristine.
     df_copy = df_raw.copy()

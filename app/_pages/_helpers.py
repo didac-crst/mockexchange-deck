@@ -30,6 +30,16 @@ from app.services.api import get_assets_overview, get_trades_overview
 # -----------------------------------------------------------------------------
 
 ZERO_DISPLAY = "--"  # Default display for zero values
+_W = "⚠️"  # warning icon – reused inline for brevity
+
+
+# Local lambdas for consistent formatting ---------------------------
+fmt_num = lambda v, warning = False: f"{v:,.0f}" if not warning else f"^{_W} {v:,.0f}"
+fmt_percent = lambda v, warning = False: f"{v:.2%}" if not warning else f"^{_W} {v:.2%}"
+fmt_cash = lambda v, cash_asset, warning = False: f"{v:,.2f} {cash_asset}" if not warning else f"^{_W} {v:,.2f} {cash_asset}"
+# fmt_cash_w = (
+#     lambda txt, w, cash_asset: f"^{_W} {fmt_cash(txt, cash_asset)}" if w else fmt_cash(txt, cash_asset)
+# )  # noqa: E731 – add warning icon when mismatch True
 
 def _remove_small_zeros(num_str: str) -> str:  # noqa: D401 – short desc fine
     """Strip redundant trailing zeros from a *decimal* string.
@@ -157,8 +167,6 @@ fmt_side_marker = lambda side: {"BUY": "↗ BUY", "SELL": "↘ SELL"}[side.upper
 # 3) Advanced equity breakdown helper
 # -----------------------------------------------------------------------------
 
-_W = "⚠️"  # warning icon – reused inline for brevity
-
 def _display_advanced_portfolio() -> None:  # noqa: D401
     """Show an advanced *equity vs frozen* breakdown in three metric columns.
 
@@ -173,12 +181,6 @@ def _display_advanced_portfolio() -> None:  # noqa: D401
     cash_asset = misc.get("cash_asset", "")
     mismatch = misc.get("mismatch", {})  # dict[field -> bool]
 
-    # Local lambdas for consistent formatting ---------------------------
-    fmt_cash = lambda v: f"{v:,.2f} {cash_asset}"  # noqa: E731
-    fmt = (
-        lambda txt, w: f"{_W} {fmt_cash(txt)}" if w else fmt_cash(txt)
-    )  # noqa: E731 – add warning icon when mismatch True
-
     balance_summary = summary.get("balance_source", {})
     orders_summary = summary.get("orders_source", {})
 
@@ -186,53 +188,175 @@ def _display_advanced_portfolio() -> None:  # noqa: D401
     # Render three metric columns (equity / cash / assets)
     # ------------------------------------------------------------------
     c1, c2, c3 = st.columns(3)
+    st.markdown("---")
 
     # Equity ------------------------------------------------------------
     with c1:
-        st.metric("Portfolio ▶ Total equity", fmt(balance_summary["total_equity"], False))
-        st.metric("Portfolio ▶ Free equity", fmt(balance_summary["total_free_value"], False))
+        st.metric("Portfolio ▶ Total equity", fmt_cash(balance_summary["total_equity"], cash_asset))
+        st.metric("Portfolio ▶ Free equity", fmt_cash(balance_summary["total_free_value"], cash_asset))
         st.metric(
             "Portfolio ▶ Frozen equity",
-            fmt(balance_summary["total_frozen_value"], mismatch["total_frozen_value"]),
+            fmt_cash(balance_summary["total_frozen_value"], cash_asset, mismatch["total_frozen_value"]),
         )
         st.metric(
             "Order book ▶ Frozen equity",
-            fmt(orders_summary["total_frozen_value"], mismatch["total_frozen_value"]),
+            fmt_cash(orders_summary["total_frozen_value"], cash_asset, mismatch["total_frozen_value"]),
         )
 
     # Cash --------------------------------------------------------------
     with c2:
-        st.metric("Portfolio ▶ Total cash", fmt(balance_summary["cash_total_value"], False))
-        st.metric("Portfolio ▶ Free cash", fmt(balance_summary["cash_free_value"], False))
+        st.metric("Portfolio ▶ Total cash", fmt_cash(balance_summary["cash_total_value"], cash_asset))
+        st.metric("Portfolio ▶ Free cash", fmt_cash(balance_summary["cash_free_value"], cash_asset))
         st.metric(
             "Portfolio ▶ Frozen cash",
-            fmt(balance_summary["cash_frozen_value"], mismatch["cash_frozen_value"]),
+            fmt_cash(balance_summary["cash_frozen_value"], cash_asset, mismatch["cash_frozen_value"]),
         )
         st.metric(
             "Order book ▶ Frozen cash",
-            fmt(orders_summary["cash_frozen_value"], mismatch["cash_frozen_value"]),
+            fmt_cash(orders_summary["cash_frozen_value"], cash_asset, mismatch["cash_frozen_value"]),
         )
 
     # Assets ------------------------------------------------------------
     with c3:
         st.metric(
             "Portfolio ▶ Total assets value",
-            fmt(balance_summary["assets_total_value"], False),
+            fmt_cash(balance_summary["assets_total_value"], cash_asset),
         )
         st.metric(
             "Portfolio ▶ Free assets value",
-            fmt(balance_summary["assets_free_value"], False),
+            fmt_cash(balance_summary["assets_free_value"], cash_asset),
         )
         st.metric(
             "Portfolio ▶ Frozen assets value",
-            fmt(balance_summary["assets_frozen_value"], mismatch["assets_frozen_value"]),
+            fmt_cash(balance_summary["assets_frozen_value"], cash_asset, mismatch["assets_frozen_value"]),
         )
         st.metric(
             "Order book ▶ Frozen assets value",
-            fmt(orders_summary["assets_frozen_value"], mismatch["assets_frozen_value"]),
+            fmt_cash(orders_summary["assets_frozen_value"], cash_asset, mismatch["assets_frozen_value"]),
         )
 
-def _display_advanced_trades() -> None:  # noqa: D401
+def _display_basic_trades_details(trades_summary: dict, cash_asset:str) -> None:
+    """
+    Show a basic *trades summary* in three metric columns.
+
+    Fetches the combined summary from ``/overview/trades`` (via
+    ``get_trades_overview``), then prints a grid of **st.metric** widgets
+    comparing *total*, *buy*, and *sell* trades.  Any mismatch in the
+    total amount is flagged with a warning icon (⚠️) in front of the figure.
+    """
+
+    # --- core amounts --------------------------------------------------
+    incomplete_data        = trades_summary["TOTAL"]["amount_value_incomplete"]
+    total_investment       = trades_summary["BUY"]["notional"]
+    total_divestment       = trades_summary["SELL"]["notional"]
+    actual_investment      = total_investment - total_divestment
+    total_paid_fees        = trades_summary["TOTAL"]["fee"]
+
+    buy_current_value      = trades_summary["BUY"]["amount_value"] # Current value of all buy trades - even if part of them have already been sold
+    sell_current_value     = trades_summary["SELL"]["amount_value"] # Current value of all sell trades - somehow is the missing opportunity value
+    assets_current_value   = buy_current_value - sell_current_value # still held
+
+    # --- cash & P&L figures -------------------------------------------
+    gross_earnings         = assets_current_value - actual_investment  # before fees
+    net_earnings           = gross_earnings - total_paid_fees  # after fees
+    market_value_open      = assets_current_value
+
+    # --- ROI on current risk ------------------------------------------
+    gross_roi_on_cost      = gross_earnings / actual_investment if actual_investment > 0 else None  # before fees
+    net_roi_on_cost        = net_earnings / actual_investment if actual_investment > 0 else None # after fees
+    gross_roi_on_value     = gross_earnings / assets_current_value if assets_current_value > 0 else None # before fees
+    net_roi_on_value       = net_earnings / assets_current_value if assets_current_value > 0 else None # after fees
+
+    # --- multiples (gross) --------------------------------------------
+    total_investment = total_investment if total_investment or total_investment > 0 else None  # avoid division by zero
+
+    # --- multiples (gross) --------------------------------------------
+    dpi_gross  = total_divestment / total_investment if total_investment else None # DPI = Distributions to Paid-In
+    rvpi_gross = assets_current_value / total_investment if total_investment else None # RVPI = Residual Value to Paid-In
+    moic_gross = dpi_gross + rvpi_gross if None not in (dpi_gross, rvpi_gross) else None # MOIC = Multiple on Invested Capital
+
+    # Total trades ------------------------------------------------------------
+    # ------------------------------------------------------------------
+    # Render three metric columns
+    # ------------------------------------------------------------------
+    c1, c2, c3 = st.columns(3)
+
+    # ────────────────────────────────────────────────────────────────
+    # Column 1 · Cash & P&L figures
+    # ────────────────────────────────────────────────────────────────
+    with c1:
+        st.metric(
+            "Value ▶ Open Positions",
+            fmt_cash(market_value_open, cash_asset, incomplete_data)
+        )
+        st.metric(
+            "P&L ▶ Net (After Fees)",
+            fmt_cash(net_earnings, cash_asset, incomplete_data)
+        )
+        st.metric(
+            "P&L ▶ Gross (Before Fees)",
+            fmt_cash(gross_earnings, cash_asset, incomplete_data)
+        )
+
+    # ────────────────────────────────────────────────────────────────
+    # Column 2 · ROI on current risk
+    # ────────────────────────────────────────────────────────────────
+    with c2:
+        display_roi = True
+        if actual_investment > 0:
+            net_roi_title = "ROI ▶ Net on Cost"
+            net_roi = net_roi_on_cost
+            gross_roi_title = "ROI ▶ Gross on Cost"
+            gross_roi = gross_roi_on_cost
+        elif assets_current_value > 0:
+            # If no investment was made, but we have a current value,
+            # show ROI on that value instead.
+            display_roi = True
+            net_roi_title = "ROI ▶ Net on Value"
+            net_roi = net_roi_on_value
+            gross_roi_title = "ROI ▶ Gross on Value"
+            gross_roi = gross_roi_on_value
+        else:
+            display_roi = False
+
+        st.metric(
+            "Capital ▶ At Risk (Cost)",
+            fmt_cash(actual_investment, cash_asset, incomplete_data)
+        )
+        if not display_roi:
+            st.warning(
+                "No ROI data available. "
+                "Either no trades were made or the current value is zero."
+            )
+        else:
+            # Show ROI metrics only if we have a valid investment or current value.
+            st.metric(
+                net_roi_title,
+                fmt_percent(net_roi, incomplete_data) if net_roi is not None else ZERO_DISPLAY
+            )
+            st.metric(
+                gross_roi_title,
+                fmt_percent(gross_roi, incomplete_data) if gross_roi is not None else ZERO_DISPLAY
+            )
+
+    # ────────────────────────────────────────────────────────────────
+    # Column 3 · Multiples as % returns (0 % = break-even)
+    # ────────────────────────────────────────────────────────────────
+    with c3:
+        st.metric(
+            "Multiple ▶ RVPI (Residual Value to Paid-In)",
+            fmt_percent(rvpi_gross, incomplete_data) if rvpi_gross is not None else ZERO_DISPLAY
+        )
+        st.metric(
+            "Multiple ▶ DPI (Distributions to Paid-In)",
+            fmt_percent(dpi_gross, incomplete_data) if dpi_gross is not None else ZERO_DISPLAY
+        )
+        st.metric(
+            "Multiple ▶ MOIC (Multiple on Invested Capital)",
+            fmt_percent(moic_gross, incomplete_data) if moic_gross is not None else ZERO_DISPLAY
+        )
+
+def _display_advanced_trades(trades_summary: dict, cash_asset:str) -> None:  # noqa: D401
     """
     Show an advanced *trades summary* in three metric columns.
 
@@ -242,37 +366,47 @@ def _display_advanced_trades() -> None:  # noqa: D401
     total amount is flagged with a warning icon (⚠️) in front of the figure.
     """
 
-    trades_summary, cash_asset= get_trades_overview()
+    # Display_basic_trades_details(trades_summary, cash_asset)
+    _display_basic_trades_details(trades_summary, cash_asset)
 
-    # Local lambdas for consistent formatting ---------------------------
-    fmt_num = lambda v: f"{v:,.0f}"  # noqa: E731
-    fmt_cash = lambda v: f"{v:,.2f} {cash_asset}"  # noqa: E731
-    fmt_cash_w = (
-        lambda txt, w: f"{_W} {fmt_cash(txt)}" if w else fmt_cash(txt)
-    )  # noqa: E731 – add warning icon when mismatch True
-
+    total_investment = trades_summary["BUY"]["notional"]
+    total_divestment = trades_summary["SELL"]["notional"]
+    total_traded = total_investment + total_divestment
+    count_buy_orders = trades_summary["BUY"]["count"]
+    count_sell_orders = trades_summary["SELL"]["count"]
+    total_orders = trades_summary["TOTAL"]["count"]
+    avg_buy_price_order = total_investment / count_buy_orders if count_buy_orders > 0 else 0
+    avg_sell_price_order = total_divestment / count_sell_orders if count_sell_orders > 0 else 0
+    avg_trade_price_order = total_traded / total_orders if total_orders > 0 else 0
     # ------------------------------------------------------------------
     # Render three metric columns (equity / cash / assets)
     # ------------------------------------------------------------------
+    st.markdown("---")
     c1, c2, c3 = st.columns(3)
 
-    # Total trades ------------------------------------------------------------
+    # -----------------------------------------------------------------
+    # Column 1 · All orders
+    # -----------------------------------------------------------------
     with c1:
-        st.metric("Trades ▶ Total Count", fmt_num(trades_summary["TOTAL"]["count"]))
-        st.metric("Value ▶ Total Amount (Current Price)", fmt_cash_w(trades_summary["TOTAL"]["amount_value"], trades_summary["TOTAL"]["amount_value_incomplete"]))
-        st.metric("Notional ▶ Total", fmt_cash(trades_summary["TOTAL"]["notional"]))
-        st.metric("Fees ▶ Total", fmt_cash(trades_summary["TOTAL"]["fee"]))
+        st.metric("Notional ▶ Traded (All)",         fmt_cash(total_traded, cash_asset))
+        st.metric("Orders   ▶ Count (All)",          fmt_num(total_orders))
+        st.metric("Avg. Order Size ▶ All",            fmt_cash(avg_trade_price_order, cash_asset))
+        st.metric("Fees     ▶ Paid (All)",           fmt_cash(trades_summary["TOTAL"]["fee"], cash_asset))
 
-    # Buy trades --------------------------------------------------------------
+    # -----------------------------------------------------------------
+    # Column 2 · Buy side
+    # -----------------------------------------------------------------
     with c2:
-        st.metric("Trades ▶ Buy Count", fmt_num(trades_summary["BUY"]["count"]))
-        st.metric("Value ▶ Buy Amount (Current Price)", fmt_cash_w(trades_summary["BUY"]["amount_value"], trades_summary["BUY"]["amount_value_incomplete"]))
-        st.metric("Notional ▶ Buy", fmt_cash(trades_summary["BUY"]["notional"]))
-        st.metric("Fees ▶ Buy", fmt_cash(trades_summary["BUY"]["fee"]))
+        st.metric("Notional ▶ Invested (Buy)",       fmt_cash(total_investment, cash_asset))
+        st.metric("Orders   ▶ Count (Buy)",          fmt_num(count_buy_orders))
+        st.metric("Avg. Order Size ▶ Buy",            fmt_cash(avg_buy_price_order, cash_asset))
+        st.metric("Fees     ▶ Paid (Buy)",           fmt_cash(trades_summary["BUY"]["fee"], cash_asset))
 
-    # Sell trades ------------------------------------------------------------
+    # -----------------------------------------------------------------
+    # Column 3 · Sell side
+    # -----------------------------------------------------------------
     with c3:
-        st.metric("Trades ▶ Sell Count", fmt_num(trades_summary["SELL"]["count"]))
-        st.metric("Value ▶ Sell Amount (Current Price)", fmt_cash_w(trades_summary["SELL"]["amount_value"], trades_summary["SELL"]["amount_value_incomplete"]))
-        st.metric("Notional ▶ Sell", fmt_cash(trades_summary["SELL"]["notional"]))
-        st.metric("Fees ▶ Sell", fmt_cash(trades_summary["SELL"]["fee"]))
+        st.metric("Notional ▶ Divested (Sell)",      fmt_cash(total_divestment, cash_asset))
+        st.metric("Orders   ▶ Count (Sell)",         fmt_num(count_sell_orders))
+        st.metric("Avg. Order Size ▶ Sell",           fmt_cash(avg_sell_price_order, cash_asset))
+        st.metric("Fees     ▶ Paid (Sell)",          fmt_cash(trades_summary["SELL"]["fee"], cash_asset))
