@@ -50,7 +50,7 @@ st.set_page_config(
 # Local imports (after Streamlit initialisation)
 # -----------------------------------------------------------------------------
 from app.config import settings
-from app._pages import portfolio, orders, order_details
+from app._pages import portfolio, orders, performance, order_details
 from app._pages._helpers import update_page, TS_FMT  # noqa: F401
 
 # -----------------------------------------------------------------------------
@@ -67,13 +67,13 @@ params = st.query_params                     # returns a QueryParamsProxy
 oid    = params.get("order_id")              # already a single value (or None)
 
 # Default to portfolio if param missing
-initial_page = params.get("page", "Portfolio")
+initial_page = params.get("page", "Performance")
 
 # Two-page app: Portfolio ↔ Order Book
 page = st.sidebar.radio(
     "Navigate",
-    ("Portfolio", "Order Book"),
-    index=["Portfolio", "Order Book"].index(initial_page),
+    ("Performance", "Portfolio", "Order Book"),
+    index=["Performance", "Portfolio", "Order Book"].index(initial_page),
     key="sidebar_page",
     on_change=update_page                   # <-- call the helper above
 )
@@ -92,7 +92,9 @@ if oid:
     order_details.render(order_id=oid)
 else:
     # Otherwise fall back to the radio-selected main page
-    if page == "Portfolio":
+    if page == "Performance":
+        performance.render()
+    elif page == "Portfolio":
         portfolio.render()
     else:  # page == "Order Book"
         orders.render()
