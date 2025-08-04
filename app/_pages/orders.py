@@ -114,7 +114,7 @@ def render() -> None:  # noqa: D401 – imperative mood is clearer here
     if df_raw.empty:
         st.info("No orders found.")
         return  # early exit – nothing else to do
-    
+
     trades_summary, cash_asset = get_trades_overview()
 
     # ------------------------------------------------------------------
@@ -128,7 +128,8 @@ def render() -> None:  # noqa: D401 – imperative mood is clearer here
         st.sidebar.info(
             "Advanced details include metrics concerning total/buy/sell trades."
         )
-        _display_advanced_trades_details(trades_summary, cash_asset)
+        _display_basic_trades_details(trades_summary, cash_asset)
+        _display_advanced_trades_details(trades_summary, cash_asset, df_raw)
     else:
         _display_basic_trades_details(trades_summary, cash_asset)
 

@@ -44,7 +44,7 @@ def _get(path: str):  # noqa: D401 – short desc fine
     return r.json()
 
 
-def _prices_for(assets: list[str]) -> dict[str, float]:  # noqa: D401
+def _prices_for_assets(assets: list[str]) -> dict[str, float]:  # noqa: D401
     """Return mapping ``{asset: last_price_in_quote}``.
 
     Supports two payload styles:
@@ -56,37 +56,13 @@ def _prices_for(assets: list[str]) -> dict[str, float]:  # noqa: D401
 
     # Build comma-separated pair list (skip the quote asset itself)
     pairs = [f"{a}/{QUOTE}" for a in assets if a != QUOTE]
-    res = _get(f"/tickers/{','.join(pairs)}")
-
-    def _extract_price(d: dict) -> float | None:
-        """Find the price field regardless of CCXT vs simplified schema."""
-        if "last" in d:  # standard CCXT ticker
-            return float(d["last"])
-        if "info" in d and "price" in d["info"]:
-            return float(d["info"]["price"])
-        return None  # unknown format → caller will skip
-
-    price_map: dict[str, float] = {}
-
-    # ---------------- Dict payload ----------------
-    if isinstance(res, dict):
-        for data in res.values():
-            p = _extract_price(data)
-            if p is not None:
-                price_map[data["symbol"].split("/")[0]] = p
-
-    # ---------------- List payload ----------------
-    elif isinstance(res, list):
-        for data in res:
-            p = _extract_price(data)
-            if p is not None and "symbol" in data:
-                price_map[data["symbol"].split("/")[0]] = p
-    else:
-        raise TypeError(f"Unexpected ticker payload type: {type(res)}")
-
+    price_map = get_prices(pairs)
     # Quote asset always maps to 1.0 so downstream math is simpler
     price_map.setdefault(QUOTE, 1.0)
-    return price_map
+
+    price_asset_map = {symbol.split("/")[0]: value for symbol, value in price_map.items()}
+
+    return price_asset_map
 
 
 def _extract_assets(raw):  # noqa: D401 – helper, not user-facing
@@ -114,6 +90,42 @@ def _extract_assets(raw):  # noqa: D401 – helper, not user-facing
 # -----------------------------------------------------------------------------
 # Public API helpers (called by Streamlit pages)
 # -----------------------------------------------------------------------------
+
+def get_prices(tickers: list[str]) -> dict[str, float]:
+    """Return a mapping of ``{ticker: last_price_in_quote}``.
+
+    The *tickers* list must contain pairs like "BTC/USDT", "ETH/USDT" etc.
+    The quote asset is determined by the global setting (e.g. "USDT").
+    """
+    res = _get(f"/tickers/{','.join(tickers)}")
+
+    def _extract_price(d: dict) -> float | None:
+        """Find the price field regardless of CCXT vs simplified schema."""
+        if "last" in d:  # standard CCXT ticker
+            return float(d["last"])
+        if "info" in d and "price" in d["info"]:
+            return float(d["info"]["price"])
+        return None  # unknown format → caller will skip
+
+    price_map: dict[str, float] = {}
+
+    # ---------------- Dict payload ----------------
+    if isinstance(res, dict):
+        for data in res.values():
+            p = _extract_price(data)
+            if p is not None:
+                price_map[data["symbol"]] = p
+
+    # ---------------- List payload ----------------
+    elif isinstance(res, list):
+        for data in res:
+            p = _extract_price(data)
+            if p is not None and "symbol" in data:
+                price_map[data["symbol"]] = p
+    else:
+        raise TypeError(f"Unexpected ticker payload type: {type(res)}")
+
+    return price_map
 
 def get_balance() -> dict:
     """Fetch `/balance` and return a structured dict
@@ -144,7 +156,7 @@ def get_balance() -> dict:
 
     # ---- Attach last prices -------------------------------------------
     if "quote_price" not in assets_df.columns:
-        price_map = _prices_for(assets_df["asset"].tolist())
+        price_map = _prices_for_assets(assets_df["asset"].tolist())
         assets_df["quote_price"] = assets_df["asset"].map(price_map)
 
     equity = (assets_df["total"] * assets_df["quote_price"]).sum()
@@ -219,7 +231,7 @@ def get_trades_overview() -> tuple[dict, str]:
     assets_in_trades = [base for base in _find_assets_in_trades(raw) if base != QUOTE]
     # Here we are passing only the asset name and not the full pair like "BTC/USDT"
     # In sum_metric we will only need the base asset name, not the quote.
-    last_prices = _prices_for(assets_in_trades) # noqa: D401
+    last_prices = _prices_for_assets(assets_in_trades) # noqa: D401
 
     # helper that digs into one metric (count/amount/notional/fee)
     def _sum_metric(side_block: dict, metric: str, last_prices: dict) -> float:

@@ -18,14 +18,14 @@ Only **docstrings and comments** have been added; no functional changes.
 from __future__ import annotations
 
 # Third-party -----------------------------------------------------------------
-import math
+import math, time
 from typing import Literal
 from datetime import datetime, timezone
 import pandas as pd
 import streamlit as st
 
 # Project ---------------------------------------------------------------------
-from app.services.api import get_assets_overview, get_trades_overview
+from app.services.api import get_assets_overview, get_prices
 
 # -----------------------------------------------------------------------------
 # 0) Global page configuration – must run before any Streamlit call
@@ -44,6 +44,7 @@ def update_page(page: None | str = None) -> None:
 TS_FMT = "%d/%m %H:%M:%S"  # Timestamp format for human-readable dates
 ZERO_DISPLAY = "--"  # Default display for zero values
 _W = "⚠️"  # warning icon – reused inline for brevity
+THRESHOLD_HOURS = 3 # Window in hours to compute the hourly average trade summary
 
 
 # Local lambdas for consistent formatting ---------------------------
@@ -193,6 +194,41 @@ def _format_significant_float(value: float | int | None, unity: str | None = Non
 
 fmt_side_marker = lambda side: {"BUY": "↗ BUY", "SELL": "↘ SELL"}[side.upper()]  # noqa: E731
 
+def get_tempo_avg_trade_summary(df_raw: pd.DataFrame) -> dict[str, dict[str, float]]:
+    """Compute the hourly average trade summary"""
+    # Get the order creation pace:
+    # 1. Select & copy
+    THRESHOLD_SEC = THRESHOLD_HOURS * 3600  # 3 hours in seconds
+    mask = df_raw["ts_create"] > time.time() - THRESHOLD_SEC
+    df_filt = df_raw.loc[mask, ['id','side','price','amount','symbol']].copy()
+
+    # 2. Compute a full symbol→price map (so you can fill *all* gaps)
+    symbols = df_filt['symbol'].unique().tolist()
+    current_prices = get_prices(symbols)  # e.g. {'BTC': 30000, 'ETH': 1800, …}
+
+    # 3. Map every symbol to its current price
+    #    – this will give NaN for any symbol not in current_prices
+    df_filt['current_price'] = df_filt['symbol'].map(current_prices)
+
+    # 4a. If you want to overwrite the old price only where missing:
+    df_filt['price'] = df_filt['price'].fillna(df_filt['current_price'])
+    df_filt['theoretical_notional'] = df_filt['price'] * df_filt['amount']
+    df_filt = df_filt[['side', 'theoretical_notional']]
+    # Group by side and sum the theoretical notional and count
+    # the number of orders for each side.
+    df_filt_agg = df_filt.groupby('side').agg(
+        total_notional=('theoretical_notional', 'sum'),
+        order_count=('theoretical_notional', 'count')
+    ).reset_index()
+    # Convert dataframe to dict for display
+    df_filt_agg = df_filt_agg.set_index('side') / THRESHOLD_HOURS  # convert to per-hour rate
+    avg_trade_summary = df_filt_agg.to_dict(orient='index') # convert to dict for display
+    # Add a global summary entry
+    avg_trade_summary["global"] = {}
+    for metric in df_filt_agg.columns:
+        avg_trade_summary["global"][metric] = df_filt_agg[metric].sum()
+    return avg_trade_summary
+
 # -------------------------------------------------------------------------
 # 3) Streamlit metric helpers  (paste into _helpers.py or a new utils_metrics.py)
 # -------------------------------------------------------------------------
@@ -251,7 +287,7 @@ def show_metric(
         txt_value = ZERO_DISPLAY
     else:
         if value_type == "integer":
-            txt_value = f"{value:,.0f}{unit}"
+            txt_value = f"{value:,.0f} {unit}"
         elif value_type == "percent":
             if abs(value) < 2:
                 # When value is less than 2% it is shown as a percentage
@@ -261,7 +297,7 @@ def show_metric(
                 txt_value = f"{value:,.2f}×"
 
         elif value_type == "normal":
-            txt_value = f"{value:,.2f}{unit}"
+            txt_value = f"{value:,.2f} {unit}"
         else:
             raise ValueError(f"Unknown value_type: {value_type}")
         if incomplete:
@@ -275,11 +311,11 @@ def show_metric(
         delta_raw = value - ref
         if delta_fmt == "raw":
             if value_type == "integer":
-                delta_display = f"{delta_raw:+,.0f}{unit}"
+                delta_display = f"{delta_raw:+,.0f} {unit}"
             elif value_type == "percent":
                 delta_display = f"{delta_raw:+,.2%}"
             elif value_type == "normal":
-                delta_display = f"{delta_raw:+,.2f}{unit}"
+                delta_display = f"{delta_raw:+,.2f} {unit}"
         else:
             delta_display = None
     else:
@@ -461,7 +497,7 @@ def _display_basic_trades_details(trades_summary: dict, cash_asset:str) -> None:
 # 6) Trades summary helpers - Advanced
 # -----------------------------------------------------------------------------
 
-def _display_advanced_trades_details(trades_summary: dict, cash_asset:str) -> None:  # noqa: D401
+def _display_advanced_trades_details(trades_summary: dict, cash_asset:str, df_raw: pd.DataFrame) -> None:  # noqa: D401
     """
     Show an advanced *trades summary* in three metric columns.
 
@@ -471,9 +507,7 @@ def _display_advanced_trades_details(trades_summary: dict, cash_asset:str) -> No
     total amount is flagged with a warning icon (⚠️) in front of the figure.
     """
 
-    # Display_basic_trades_details(trades_summary, cash_asset)
-    _display_basic_trades_details(trades_summary, cash_asset)
-
+    avg_trade_summary = get_tempo_avg_trade_summary(df_raw)
     total_investment = trades_summary["BUY"]["notional"]
     total_divestment = trades_summary["SELL"]["notional"]
     total_traded = total_investment + total_divestment
@@ -493,19 +527,25 @@ def _display_advanced_trades_details(trades_summary: dict, cash_asset:str) -> No
         {"label": "GLOBAL ▶ Notional Traded", "value": total_traded, "unit": cash_asset, "delta_fmt": "raw", "delta_color_rule": "off"},
         {"label": "GLOBAL ▶ Orders Count", "value": total_orders, "delta_fmt": "raw", "delta_color_rule": "off", "value_type": "integer"},
         {"label": "GLOBAL ▶ Avg. Order Size", "value": avg_trade_price_order, "unit": cash_asset, "delta_fmt": "raw", "delta_color_rule": "off"},
-        {"label": "GLOBAL ▶ Paid Fees", "value": trades_summary["TOTAL"]["fee"], "unit": cash_asset, "delta_fmt": "raw", "delta_color_rule": "off"}
+        {"label": "GLOBAL ▶ Paid Fees", "value": trades_summary["TOTAL"]["fee"], "unit": cash_asset, "delta_fmt": "raw", "delta_color_rule": "off"},
+        {"label": "GLOBAL ▶ Avg. Notional Traded per Hour", "value": avg_trade_summary["global"]["total_notional"], "unit": f"{cash_asset} / h", "delta_fmt": "raw", "delta_color_rule": "inverse"},
+        {"label": "GLOBAL ▶ Avg. Orders per Hour", "value": avg_trade_summary["global"]["order_count"], "unit": f"orders / h", "delta_fmt": "raw", "delta_color_rule": "inverse"},
     ]
     specs2 = [
         {"label": "BUY ▶ Notional Invested", "value": total_investment, "unit": cash_asset, "delta_fmt": "raw", "delta_color_rule": "off"},
         {"label": "BUY ▶ Orders Count", "value": count_buy_orders, "delta_fmt": "raw", "delta_color_rule": "off", "value_type": "integer"},
         {"label": "BUY ▶ Avg. Order Size", "value": avg_buy_price_order, "unit": cash_asset, "delta_fmt": "raw", "delta_color_rule": "off"},
-        {"label": "BUY ▶ Paid Fees", "value": trades_summary["BUY"]["fee"], "unit": cash_asset, "delta_fmt": "raw", "delta_color_rule": "off"}
+        {"label": "BUY ▶ Paid Fees", "value": trades_summary["BUY"]["fee"], "unit": cash_asset, "delta_fmt": "raw", "delta_color_rule": "off"},
+        {"label": "BUY ▶ Avg. Notional Traded per Hour", "value": avg_trade_summary["buy"]["total_notional"], "unit": f"{cash_asset} / h", "delta_fmt": "raw", "delta_color_rule": "inverse"},
+        {"label": "BUY ▶ Avg. Orders per Hour", "value": avg_trade_summary["buy"]["order_count"], "unit": f"orders / h", "delta_fmt": "raw", "delta_color_rule": "inverse"},
     ]
     specs3 = [
         {"label": "SELL ▶ Notional Divested", "value": total_divestment, "unit": cash_asset, "delta_fmt": "raw", "delta_color_rule": "off"},
         {"label": "SELL ▶ Orders Count", "value": count_sell_orders, "delta_fmt": "raw", "delta_color_rule": "off", "value_type": "integer"},
         {"label": "SELL ▶ Avg. Order Size", "value": avg_sell_price_order, "unit": cash_asset, "delta_fmt": "raw", "delta_color_rule": "off"},
-        {"label": "SELL ▶ Paid Fees", "value": trades_summary["SELL"]["fee"], "unit": cash_asset, "delta_fmt": "raw", "delta_color_rule": "off"}
+        {"label": "SELL ▶ Paid Fees", "value": trades_summary["SELL"]["fee"], "unit": cash_asset, "delta_fmt": "raw", "delta_color_rule": "off"},
+        {"label": "SELL ▶ Avg. Notional Traded per Hour", "value": avg_trade_summary["sell"]["total_notional"], "unit": f"{cash_asset} / h", "delta_fmt": "raw", "delta_color_rule": "inverse"},
+        {"label": "SELL ▶ Avg. Orders per Hour", "value": avg_trade_summary["sell"]["order_count"], "unit": f"orders / h", "delta_fmt": "raw", "delta_color_rule": "inverse"},
     ]
 
     show_metrics_bulk(c1, specs1)
