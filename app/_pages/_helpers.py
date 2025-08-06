@@ -70,7 +70,7 @@ def advanced_filter_toggle() -> bool:
         "Display advanced details",
         key="advanced_display"
     )
-    
+
     # Only update query params if the user changes the toggle
     if advanced_display != (filter_advanced == "True"):
         st.query_params.update(filter_advanced="True" if advanced_display else "False")
@@ -231,7 +231,7 @@ def _format_significant_float(value: float | int | None, unity: str | None = Non
 
 fmt_side_marker = lambda side: {"BUY": "↗ BUY", "SELL": "↘ SELL"}[side.upper()]  # noqa: E731
 
-def get_tempo_avg_trade_summary(df_raw: pd.DataFrame) -> dict[str, dict[str, float]]:
+def get_tempo_avg_trade_summary(df_raw: pd.DataFrame, equity: float) -> tuple[dict[str, dict[str, float]],str]:
     """Compute the hourly average trade summary"""
     # Get the order creation pace:
     # 1. Select & copy
@@ -260,12 +260,20 @@ def get_tempo_avg_trade_summary(df_raw: pd.DataFrame) -> dict[str, dict[str, flo
     )
     # Convert dataframe to dict for display
     df_filt_agg = df_filt_agg.set_index('side') * 3600 / timespan  # convert to per-hour rate
+
+    if df_filt_agg["total_notional"].sum() < (equity/10):
+        # If the total notional is more than equity, convert to daily rate
+        df_filt_agg = df_filt_agg * 24
+        period_agg = "day"
+    else:
+        period_agg = "h"
+
     avg_trade_summary = df_filt_agg.to_dict(orient='index')  # convert to dict for display
     # Add a global summary entry
     avg_trade_summary["global"] = {}
     for metric in df_filt_agg.columns:
         avg_trade_summary["global"][metric] = df_filt_agg[metric].sum()
-    return avg_trade_summary
+    return avg_trade_summary, period_agg
 
 # -------------------------------------------------------------------------
 # 3) Streamlit metric helpers  (paste into _helpers.py or a new utils_metrics.py)
@@ -570,16 +578,33 @@ def _display_trades_details(trades_summary: dict, cash_asset:str, df_raw: pd.Dat
     """
     summary_capital = get_overview_capital()
     equity = summary_capital.get("equity", 0.0)
-    avg_trade_summary = get_tempo_avg_trade_summary(df_raw)
-    total_investment = trades_summary["BUY"]["notional"]
-    total_divestment = trades_summary["SELL"]["notional"]
-    total_traded = total_investment + total_divestment
-    count_buy_orders = trades_summary["BUY"]["count"]
-    count_sell_orders = trades_summary["SELL"]["count"]
-    total_orders = trades_summary["TOTAL"]["count"]
-    avg_buy_price_order = total_investment / count_buy_orders if count_buy_orders > 0 else 0
-    avg_sell_price_order = total_divestment / count_sell_orders if count_sell_orders > 0 else 0
-    avg_trade_price_order = total_traded / total_orders if total_orders > 0 else 0
+    avg_trade_summary, period_agg = get_tempo_avg_trade_summary(df_raw, equity)
+    # ------------------------------------------------------------------
+    buy_traded = trades_summary["BUY"]["notional"]
+    sell_traded = trades_summary["SELL"]["notional"]
+    global_traded = buy_traded + sell_traded
+    buy_orders_count = trades_summary["BUY"]["count"]
+    sell_orders_count = trades_summary["SELL"]["count"]
+    global_orders = trades_summary["TOTAL"]["count"]
+    buy_paid_fees = trades_summary["BUY"]["fee"]
+    sell_paid_fees = trades_summary["SELL"]["fee"]
+    global_paid_fees = trades_summary["TOTAL"]["fee"]
+    avg_buy_price_order = buy_traded / buy_orders_count if buy_orders_count > 0 else 0
+    avg_sell_price_order = sell_traded / sell_orders_count if sell_orders_count > 0 else 0
+    avg_trade_price_order = global_traded / global_orders if global_orders > 0 else 0
+    avg_buy_capital_churn_rate = avg_trade_summary["buy"]["total_notional"]
+    avg_sell_capital_churn_rate = avg_trade_summary["sell"]["total_notional"]
+    avg_global_capital_churn_rate = avg_trade_summary["global"]["total_notional"]
+    avg_buy_equity_churn_rate = 100 * avg_buy_capital_churn_rate / equity if equity > 0 else 0
+    avg_sell_equity_churn_rate = 100 * avg_sell_capital_churn_rate / equity if equity > 0 else 0
+    avg_global_equity_churn_rate = 100 * avg_global_capital_churn_rate / equity if equity > 0 else 0
+    avg_buy_order_churn_rate = avg_trade_summary["buy"]["order_count"]
+    avg_sell_order_churn_rate = avg_trade_summary["sell"]["order_count"]
+    avg_global_order_churn_rate = avg_trade_summary["global"]["order_count"]
+    avg_buy_fee_burn_rate = avg_trade_summary["buy"]["total_fee"]
+    avg_sell_fee_burn_rate = avg_trade_summary["sell"]["total_fee"]
+    avg_global_fee_burn_rate = avg_trade_summary["global"]["total_fee"]
+
     # ------------------------------------------------------------------
     # Render three metric columns (equity / cash / assets)
     # ------------------------------------------------------------------
@@ -587,34 +612,34 @@ def _display_trades_details(trades_summary: dict, cash_asset:str, df_raw: pd.Dat
     c1, c2, c3 = st.columns(3)
     if advanced_display:
         specs1 = [
-            {"label": "GLOBAL ▶ Notional Traded", "value": total_traded, "unit": cash_asset, "delta_fmt": "raw", "delta_color_rule": "off"},
-            {"label": "GLOBAL ▶ Orders Count", "value": total_orders, "delta_fmt": "raw", "delta_color_rule": "off", "value_type": "integer"},
+            {"label": "GLOBAL ▶ Notional Traded", "value": global_traded, "unit": cash_asset, "delta_fmt": "raw", "delta_color_rule": "off"},
+            {"label": "GLOBAL ▶ Orders Count", "value": global_orders, "delta_fmt": "raw", "delta_color_rule": "off", "value_type": "integer"},
             {"label": "GLOBAL ▶ Avg. Order Size", "value": avg_trade_price_order, "unit": cash_asset, "delta_fmt": "raw", "delta_color_rule": "off"},
-            {"label": "GLOBAL ▶ Paid Fees", "value": trades_summary["TOTAL"]["fee"], "unit": cash_asset, "delta_fmt": "raw", "delta_color_rule": "off"},
-            {"label": "GLOBAL ▶ Capital Churn Rate", "value": avg_trade_summary["global"]["total_notional"], "unit": f"{cash_asset} / h", "delta_fmt": "raw", "delta_color_rule": "inverse"},
-            {"label": "GLOBAL ▶ Equity Churn Rate", "value": 100*avg_trade_summary["global"]["total_notional"]/equity, "unit": f"% / h", "delta_fmt": "raw", "delta_color_rule": "inverse"},
-            {"label": "GLOBAL ▶ Order Churn Rate", "value": avg_trade_summary["global"]["order_count"], "unit": f"orders / h", "delta_fmt": "raw", "delta_color_rule": "inverse"},
-            {"label": "GLOBAL ▶ Fee Burn Rate", "value": avg_trade_summary["global"]["total_fee"], "unit": f"{cash_asset} / h", "delta_fmt": "raw", "delta_color_rule": "inverse"},
+            {"label": "GLOBAL ▶ Paid Fees", "value": global_paid_fees, "unit": cash_asset, "delta_fmt": "raw", "delta_color_rule": "off"},
+            {"label": "GLOBAL ▶ Capital Churn Rate", "value": avg_global_capital_churn_rate, "unit": f"{cash_asset} / {period_agg}", "delta_fmt": "raw", "delta_color_rule": "inverse"},
+            {"label": "GLOBAL ▶ Equity Churn Rate", "value": avg_global_equity_churn_rate, "unit": f"% / {period_agg}", "delta_fmt": "raw", "delta_color_rule": "inverse"},
+            {"label": "GLOBAL ▶ Order Churn Rate", "value": avg_global_order_churn_rate, "unit": f"orders / {period_agg}", "delta_fmt": "raw", "delta_color_rule": "inverse"},
+            {"label": "GLOBAL ▶ Fee Burn Rate", "value": avg_global_fee_burn_rate, "unit": f"{cash_asset} / {period_agg}", "delta_fmt": "raw", "delta_color_rule": "inverse"},
         ]
         specs2 = [
-            {"label": "BUY ▶ Notional Invested", "value": total_investment, "unit": cash_asset, "delta_fmt": "raw", "delta_color_rule": "off"},
-            {"label": "BUY ▶ Orders Count", "value": count_buy_orders, "delta_fmt": "raw", "delta_color_rule": "off", "value_type": "integer"},
+            {"label": "BUY ▶ Notional Invested", "value": buy_traded, "unit": cash_asset, "delta_fmt": "raw", "delta_color_rule": "off"},
+            {"label": "BUY ▶ Orders Count", "value": buy_orders_count, "delta_fmt": "raw", "delta_color_rule": "off", "value_type": "integer"},
             {"label": "BUY ▶ Avg. Order Size", "value": avg_buy_price_order, "unit": cash_asset, "delta_fmt": "raw", "delta_color_rule": "off"},
-            {"label": "BUY ▶ Paid Fees", "value": trades_summary["BUY"]["fee"], "unit": cash_asset, "delta_fmt": "raw", "delta_color_rule": "off"},
-            {"label": "BUY ▶ Capital Churn Rate", "value": avg_trade_summary["buy"]["total_notional"], "unit": f"{cash_asset} / h", "delta_fmt": "raw", "delta_color_rule": "inverse"},
-            {"label": "BUY ▶ Equity Churn Rate", "value": 100*avg_trade_summary["buy"]["total_notional"]/equity, "unit": f"% / h", "delta_fmt": "raw", "delta_color_rule": "inverse"},
-            {"label": "BUY ▶ Order Churn Rate", "value": avg_trade_summary["buy"]["order_count"], "unit": f"orders / h", "delta_fmt": "raw", "delta_color_rule": "inverse"},
-            {"label": "BUY ▶ Avg. Fee Burn Rate", "value": avg_trade_summary["buy"]["total_fee"], "unit": f"{cash_asset} / h", "delta_fmt": "raw", "delta_color_rule": "inverse"},
+            {"label": "BUY ▶ Paid Fees", "value": buy_paid_fees, "unit": cash_asset, "delta_fmt": "raw", "delta_color_rule": "off"},
+            {"label": "BUY ▶ Capital Churn Rate", "value": avg_buy_capital_churn_rate, "unit": f"{cash_asset} / {period_agg}", "delta_fmt": "raw", "delta_color_rule": "inverse"},
+            {"label": "BUY ▶ Equity Churn Rate", "value": avg_buy_equity_churn_rate, "unit": f"% / {period_agg}", "delta_fmt": "raw", "delta_color_rule": "inverse"},
+            {"label": "BUY ▶ Order Churn Rate", "value": avg_buy_order_churn_rate, "unit": f"orders / {period_agg}", "delta_fmt": "raw", "delta_color_rule": "inverse"},
+            {"label": "BUY ▶ Avg. Fee Burn Rate", "value": avg_buy_fee_burn_rate, "unit": f"{cash_asset} / {period_agg}", "delta_fmt": "raw", "delta_color_rule": "inverse"},
         ]
         specs3 = [
-            {"label": "SELL ▶ Notional Divested", "value": total_divestment, "unit": cash_asset, "delta_fmt": "raw", "delta_color_rule": "off"},
-            {"label": "SELL ▶ Orders Count", "value": count_sell_orders, "delta_fmt": "raw", "delta_color_rule": "off", "value_type": "integer"},
+            {"label": "SELL ▶ Notional Divested", "value": sell_traded, "unit": cash_asset, "delta_fmt": "raw", "delta_color_rule": "off"},
+            {"label": "SELL ▶ Orders Count", "value": sell_orders_count, "delta_fmt": "raw", "delta_color_rule": "off", "value_type": "integer"},
             {"label": "SELL ▶ Avg. Order Size", "value": avg_sell_price_order, "unit": cash_asset, "delta_fmt": "raw", "delta_color_rule": "off"},
-            {"label": "SELL ▶ Paid Fees", "value": trades_summary["SELL"]["fee"], "unit": cash_asset, "delta_fmt": "raw", "delta_color_rule": "off"},
-            {"label": "SELL ▶ Capital Churn Rate", "value": avg_trade_summary["sell"]["total_notional"], "unit": f"{cash_asset} / h", "delta_fmt": "raw", "delta_color_rule": "inverse"},
-            {"label": "SELL ▶ Equity Churn Rate", "value": 100*avg_trade_summary["sell"]["total_notional"]/equity, "unit": f"% / h", "delta_fmt": "raw", "delta_color_rule": "inverse"},
-            {"label": "SELL ▶ Order Churn Rate", "value": avg_trade_summary["sell"]["order_count"], "unit": f"orders / h", "delta_fmt": "raw", "delta_color_rule": "inverse"},
-            {"label": "SELL ▶ Avg. Fee Burn Rate", "value": avg_trade_summary["sell"]["total_fee"], "unit": f"{cash_asset} / h", "delta_fmt": "raw", "delta_color_rule": "inverse"},
+            {"label": "SELL ▶ Paid Fees", "value": sell_paid_fees, "unit": cash_asset, "delta_fmt": "raw", "delta_color_rule": "off"},
+            {"label": "SELL ▶ Capital Churn Rate", "value": avg_sell_capital_churn_rate, "unit": f"{cash_asset} / {period_agg}", "delta_fmt": "raw", "delta_color_rule": "inverse"},
+            {"label": "SELL ▶ Equity Churn Rate", "value": avg_sell_equity_churn_rate, "unit": f"% / {period_agg}", "delta_fmt": "raw", "delta_color_rule": "inverse"},
+            {"label": "SELL ▶ Order Churn Rate", "value": avg_sell_order_churn_rate, "unit": f"orders / {period_agg}", "delta_fmt": "raw", "delta_color_rule": "inverse"},
+            {"label": "SELL ▶ Avg. Fee Burn Rate", "value": avg_sell_fee_burn_rate, "unit": f"{cash_asset} / {period_agg}", "delta_fmt": "raw", "delta_color_rule": "inverse"},
         ]
 
         show_metrics_bulk(c1, specs1)
