@@ -67,7 +67,7 @@ params = st.query_params                     # returns a QueryParamsProxy
 oid    = params.get("order_id")              # already a single value (or None)
 
 # Default to portfolio if param missing
-initial_page = params.get("page", "Performance")
+initial_page = params.get("page", "Performance")    # default to "Performance"
 
 # Two-page app: Portfolio ↔ Order Book
 page = st.sidebar.radio(
@@ -75,7 +75,7 @@ page = st.sidebar.radio(
     ("Performance", "Portfolio", "Order Book"),
     index=["Performance", "Portfolio", "Order Book"].index(initial_page),
     key="sidebar_page",
-    on_change=update_page                   # <-- call the helper above
+    on_change=update_page # Update URL query-params when page changes
 )
 
 # -----------------------------------------------------------------------------

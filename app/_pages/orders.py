@@ -28,9 +28,9 @@ from app.services.api import get_orders, get_trades_overview
 from ._helpers import (
     _human_ts,
     _add_details_column,
-    _display_basic_trades_details,
-    _display_advanced_trades_details,
+    _display_trades_details,
     _format_significant_float,
+    advanced_filter_toggle,
     fmt_side_marker,
     TS_FMT,
 )
@@ -120,18 +120,14 @@ def render() -> None:  # noqa: D401 – imperative mood is clearer here
     # ------------------------------------------------------------------
     # Sidebar – advanced equity breakdown & toggle
     # ------------------------------------------------------------------
-    st.sidebar.header("Filters")
-    advanced_display = st.sidebar.checkbox(
-        "Display advanced details", value=False, key="advanced_display"
-    )
-    if advanced_display:
-        st.sidebar.info(
-            "Advanced details include metrics concerning total/buy/sell trades."
-        )
-        _display_basic_trades_details(trades_summary, cash_asset)
-        _display_advanced_trades_details(trades_summary, cash_asset, df_raw)
-    else:
-        _display_basic_trades_details(trades_summary, cash_asset)
+
+    advanced_display = advanced_filter_toggle()
+
+    # -------------------------------------------------------------------
+    # 3) Display trade metrics (simple vs advanced)
+    # ------------------------------------------------------------------
+
+    _display_trades_details(trades_summary, cash_asset, df_raw, advanced_display)
 
     # `df_copy` will be mutated for visual purposes; keep df_raw pristine.
     df_copy = df_raw.copy()

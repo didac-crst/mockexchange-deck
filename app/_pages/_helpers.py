@@ -25,17 +25,56 @@ import pandas as pd
 import streamlit as st
 
 # Project ---------------------------------------------------------------------
-from app.services.api import get_assets_overview, get_prices
+from app.services.api import get_assets_overview, get_overview_capital
 
 # -----------------------------------------------------------------------------
 # 0) Global page configuration – must run before any Streamlit call
 # -----------------------------------------------------------------------------
 def update_page(page: None | str = None) -> None:
+    """Update the ?page=... query-parameter in the URL.
+    Parameters
+    ----------
+    page : None | str
+        The new page value to set or None to reset to the default.
+    """
     # This overwrites/sets the ?page=... query-param
     if page is None:
         st.query_params.update(page=st.session_state.sidebar_page)
     else:
         st.query_params.update(page=page)
+
+def advanced_filter_toggle() -> bool:
+    """
+    Render a checkbox in the sidebar to toggle advanced details display.
+    Returns
+    -------
+    bool
+        The current state of the advanced details toggle.
+    Notes
+    -----
+    The function initializes the session state on first run and updates the
+    query parameters if the user changes the toggle.
+    """
+    params = st.query_params                                        # returns a QueryParamsProxy
+    st.sidebar.header("Filters")
+
+    filter_advanced = params.get("filter_advanced", "False")        # default to False
+
+    # Initialize session state on first run
+    if "advanced_display" not in st.session_state:
+        st.session_state.advanced_display = (filter_advanced == "True")  # convert to bool
+
+    # Render checkbox with current session state
+    # Do NOT pass `value=` — let Streamlit use session_state["advanced_display"]
+    advanced_display = st.sidebar.checkbox(
+        "Display advanced details",
+        key="advanced_display"
+    )
+    
+    # Only update query params if the user changes the toggle
+    if advanced_display != (filter_advanced == "True"):
+        st.query_params.update(filter_advanced="True" if advanced_display else "False")
+    return advanced_display
 
 # -----------------------------------------------------------------------------
 # 1) Formatting helpers
@@ -205,11 +244,20 @@ def get_tempo_avg_trade_summary(df_raw: pd.DataFrame) -> dict[str, dict[str, flo
 
     # Group by side and sum the theoretical notional and count
     # the number of orders for each side.
-    df_filt_agg = df_filt.groupby('side').agg(
-        total_notional=('actual_notion', 'sum'),
-        order_count=('actual_notion', 'count'),
-        total_fee=('actual_fee', 'sum'),
-    ).reset_index()
+    sides = ["buy", "sell"]
+
+    df_filt_agg = (
+        df_filt
+        .groupby("side")
+        .agg(
+            total_notional=("actual_notion", "sum"),
+            order_count   =("actual_notion", "count"),
+            total_fee     =("actual_fee",    "sum"),
+        )
+        # guarantee both rows – missing ones become 0
+        .reindex(sides, fill_value=0)        # Force both BUY and SELL sides
+        .reset_index()
+    )
     # Convert dataframe to dict for display
     df_filt_agg = df_filt_agg.set_index('side') * 3600 / timespan  # convert to per-hour rate
     avg_trade_summary = df_filt_agg.to_dict(orient='index')  # convert to dict for display
@@ -348,7 +396,7 @@ def show_metrics_bulk(column, specs: list[dict]) -> None:
 # 4) Advanced equity breakdown helper
 # -----------------------------------------------------------------------------
 
-def _display_advanced_portfolio_details() -> None:  # noqa: D401
+def _display_portfolio_details(advanced_display: bool = False) -> None:  # noqa: D401
     """Show an advanced *equity vs frozen* breakdown in three metric columns.
 
     Fetches the combined summary from ``/overview/assets`` (via
@@ -370,40 +418,46 @@ def _display_advanced_portfolio_details() -> None:  # noqa: D401
     # ------------------------------------------------------------------
     c1, c2, c3 = st.columns(3)
 
-    # Equity ------------------------------------------------------------
-    specs1 = [
-        {"label": "Equity ▶ Total", "value": balance_summary["total_equity"], "unit": cash_asset, "delta_fmt": "raw", "delta_color_rule": "normal"},
-        {"label": "Equity ▶ Free", "value": balance_summary["total_free_value"], "unit": cash_asset, "delta_fmt": "raw", "delta_color_rule": "normal"},
-        {"label": "Equity ▶ Frozen", "value": balance_summary["total_frozen_value"], "unit": cash_asset, "incomplete": mismatch["total_frozen_value"], "delta_fmt": "raw", "delta_color_rule": "off"},
-        {"label": "Equity ▶ Frozen [Order book]", "value": orders_summary["total_frozen_value"], "unit": cash_asset, "incomplete": mismatch["total_frozen_value"], "delta_fmt": "raw", "delta_color_rule": "off", "incomplete_display": True}
-    ]
-    # Cash --------------------------------------------------------------
-    specs2 = [
-        {"label": "Cash ▶ Total", "value": balance_summary["cash_total_value"], "unit": cash_asset, "delta_fmt": "raw", "delta_color_rule": "off"},
-        {"label": "Cash ▶ Free", "value": balance_summary["cash_free_value"], "unit": cash_asset, "delta_fmt": "raw", "delta_color_rule": "off"},
-        {"label": "Cash ▶ Frozen", "value": balance_summary["cash_frozen_value"], "unit": cash_asset, "incomplete": mismatch["cash_frozen_value"], "delta_fmt": "raw", "delta_color_rule": "off"},
-        {"label": "Cash ▶ Frozen [Order book]", "value": orders_summary["cash_frozen_value"], "unit": cash_asset, "incomplete": mismatch["cash_frozen_value"], "delta_fmt": "raw", "delta_color_rule": "off", "incomplete_display": True}
-    ]
-    # Assets ------------------------------------------------------------
-    specs3 = [
-        {"label": "Assets Value ▶ Total", "value": balance_summary["assets_total_value"], "unit": cash_asset, "delta_fmt": "raw", "delta_color_rule": "off"},
-        {"label": "Assets Value ▶ Free", "value": balance_summary["assets_free_value"], "unit": cash_asset, "delta_fmt": "raw", "delta_color_rule": "off"},
-        {"label": "Assets Value ▶ Frozen", "value": balance_summary["assets_frozen_value"], "unit": cash_asset, "incomplete": mismatch["assets_frozen_value"], "delta_fmt": "raw", "delta_color_rule": "off"},
-        {"label": "Assets Value ▶ Frozen [Order book]", "value": orders_summary["assets_frozen_value"], "unit": cash_asset, "incomplete": mismatch["assets_frozen_value"], "delta_fmt": "raw", "delta_color_rule": "off", "incomplete_display": True}
-    ]
+    if advanced_display:
+        # Equity ------------------------------------------------------------
+        specs1 = [
+            {"label": "Equity ▶ Total", "value": balance_summary["total_equity"], "unit": cash_asset, "delta_fmt": "raw", "delta_color_rule": "normal"},
+            {"label": "Equity ▶ Free", "value": balance_summary["total_free_value"], "unit": cash_asset, "delta_fmt": "raw", "delta_color_rule": "normal"},
+            {"label": "Equity ▶ Frozen", "value": balance_summary["total_frozen_value"], "unit": cash_asset, "incomplete": mismatch["total_frozen_value"], "delta_fmt": "raw", "delta_color_rule": "off"},
+            {"label": "Equity ▶ Frozen [Order book]", "value": orders_summary["total_frozen_value"], "unit": cash_asset, "incomplete": mismatch["total_frozen_value"], "delta_fmt": "raw", "delta_color_rule": "off", "incomplete_display": True}
+        ]
+        # Cash --------------------------------------------------------------
+        specs2 = [
+            {"label": "Cash ▶ Total", "value": balance_summary["cash_total_value"], "unit": cash_asset, "delta_fmt": "raw", "delta_color_rule": "off"},
+            {"label": "Cash ▶ Free", "value": balance_summary["cash_free_value"], "unit": cash_asset, "delta_fmt": "raw", "delta_color_rule": "off"},
+            {"label": "Cash ▶ Frozen", "value": balance_summary["cash_frozen_value"], "unit": cash_asset, "incomplete": mismatch["cash_frozen_value"], "delta_fmt": "raw", "delta_color_rule": "off"},
+            {"label": "Cash ▶ Frozen [Order book]", "value": orders_summary["cash_frozen_value"], "unit": cash_asset, "incomplete": mismatch["cash_frozen_value"], "delta_fmt": "raw", "delta_color_rule": "off", "incomplete_display": True}
+        ]
+        # Assets ------------------------------------------------------------
+        specs3 = [
+            {"label": "Assets Value ▶ Total", "value": balance_summary["assets_total_value"], "unit": cash_asset, "delta_fmt": "raw", "delta_color_rule": "off"},
+            {"label": "Assets Value ▶ Free", "value": balance_summary["assets_free_value"], "unit": cash_asset, "delta_fmt": "raw", "delta_color_rule": "off"},
+            {"label": "Assets Value ▶ Frozen", "value": balance_summary["assets_frozen_value"], "unit": cash_asset, "incomplete": mismatch["assets_frozen_value"], "delta_fmt": "raw", "delta_color_rule": "off"},
+            {"label": "Assets Value ▶ Frozen [Order book]", "value": orders_summary["assets_frozen_value"], "unit": cash_asset, "incomplete": mismatch["assets_frozen_value"], "delta_fmt": "raw", "delta_color_rule": "off", "incomplete_display": True}
+        ]
 
 
-    show_metrics_bulk(c1, specs1)
-    show_metrics_bulk(c2, specs2)
-    show_metrics_bulk(c3, specs3)
-
-    st.markdown("---")
+        show_metrics_bulk(c1, specs1)
+        show_metrics_bulk(c2, specs2)
+        show_metrics_bulk(c3, specs3)
+        st.markdown("---")
+    else:
+        # Equity ------------------------------------------------------------
+        specs1 = [
+            {"label": "Equity ▶ Total", "value": balance_summary["total_equity"], "unit": cash_asset, "delta_fmt": "raw", "delta_color_rule": "normal"},
+        ]
+        show_metrics_bulk(c1, specs1)
 
 # -----------------------------------------------------------------------------
-# 5) Trades summary helpers - Basic
+# 5) Advanced performance details helper
 # -----------------------------------------------------------------------------
 
-def _display_basic_trades_details(trades_summary: dict, cash_asset:str) -> None:
+def _display_performance_details(trades_summary: dict, cash_asset:str, advanced_display: bool = False) -> None:
     """
     Show a basic *trades summary* in three metric columns.
 
@@ -412,6 +466,9 @@ def _display_basic_trades_details(trades_summary: dict, cash_asset:str) -> None:
     comparing *total*, *buy*, and *sell* trades.  Any mismatch in the
     total amount is flagged with a warning icon (⚠️) in front of the figure.
     """
+
+    # ---- balance ---------------------------------------------------
+    balance_summary = summary.get("balance_source", {})
 
     # --- core amounts --------------------------------------------------
     incomplete_data        = trades_summary["TOTAL"]["amount_value_incomplete"]
@@ -449,45 +506,60 @@ def _display_basic_trades_details(trades_summary: dict, cash_asset:str) -> None:
     # ------------------------------------------------------------------
     c1, c2, c3 = st.columns(3)
 
-    # Column 1 - Cash & P&L figures -----------------------------------------
-    specs1 = [
-        {"label": "Market Value ▶ Open Positions", "value": market_value_open, "unit": cash_asset, "delta_fmt": "raw", "delta_color_rule": "off"},
-        {"label": "P&L ▶ Net (After Fees)", "value": net_earnings, "unit": cash_asset, "incomplete": incomplete_data, "delta_fmt": "raw", "delta_color_rule": "normal"},
-        {"label": "P&L ▶ Gross (Before Fees)", "value": gross_earnings, "unit": cash_asset, "incomplete": incomplete_data, "delta_fmt": "raw", "delta_color_rule": "normal"},
-    ]
-    # Column 2 - ROI on current risk -----------------------------------------
+    if advanced_display:
+        # Column 1 - Cash & P&L figures -----------------------------------------
+        specs1 = [
+            {"label": "Market Value ▶ Open Positions", "value": market_value_open, "unit": cash_asset, "delta_fmt": "raw", "delta_color_rule": "off"},
+            {"label": "P&L ▶ Gross (Before Fees)", "value": gross_earnings, "unit": cash_asset, "incomplete": incomplete_data, "delta_fmt": "raw", "delta_color_rule": "normal"},
+            {"label": "P&L ▶ Net (After Fees)", "value": net_earnings, "unit": cash_asset, "incomplete": incomplete_data, "delta_fmt": "raw", "delta_color_rule": "normal"},
+        ]
+        # Column 2 - ROI on current risk -----------------------------------------
 
-    if actual_investment > 0:
-        specs2 = [
-            {"label": "Capital ▶ At Risk (Cost)", "value": actual_investment, "unit": cash_asset, "delta_fmt": "raw", "delta_color_rule": "off"},
-            {"label": "ROI ▶ Net on Cost", "value": net_roi_on_cost, "value_type": "percent", "delta_fmt": "raw", "incomplete": incomplete_data, "delta_color_rule": "normal"},
-            {"label": "ROI ▶ Gross on Cost", "value": gross_roi_on_cost, "value_type": "percent", "delta_fmt": "raw", "incomplete": incomplete_data, "delta_color_rule": "normal"},
+        if actual_investment > 0:
+            specs2 = [
+                {"label": "Capital ▶ At Risk (Cost)", "value": actual_investment, "unit": cash_asset, "delta_fmt": "raw", "delta_color_rule": "off"},
+                {"label": "ROI ▶ Gross on Cost", "value": gross_roi_on_cost, "value_type": "percent", "delta_fmt": "raw", "incomplete": incomplete_data, "delta_color_rule": "normal"},
+                {"label": "ROI ▶ Net on Cost", "value": net_roi_on_cost, "value_type": "percent", "delta_fmt": "raw", "incomplete": incomplete_data, "delta_color_rule": "normal"},
+            ]
+        elif assets_current_value > 0:
+            free_carry_surplus = abs(actual_investment)
+            specs2 = [
+                {"label": "Capital ▶ Free Carry Surplus", "value": free_carry_surplus, "unit": cash_asset, "delta_fmt": "raw", "delta_color_rule": "normal"},
+                {"label": "ROI ▶ Gross on Value", "value": gross_roi_on_value, "value_type": "percent", "delta_fmt": "raw", "incomplete": incomplete_data, "delta_color_rule": "normal"},
+                {"label": "ROI ▶ Net on Value", "value": net_roi_on_value, "value_type": "percent", "delta_fmt": "raw", "incomplete": incomplete_data, "delta_color_rule": "normal"},
+            ]
+        else:
+            specs2 = []
+        # Column 3 - Multiples as % returns -----------------------------------------
+        specs3 = [
+            {"label": "Multiple ▶ RVPI (Residual Value to Paid-In)", "value": rvpi_gross, "value_type": "percent", "delta_fmt": "raw", "incomplete": incomplete_data, "delta_color_rule": "off"},
+            {"label": "Multiple ▶ DPI (Distributions to Paid-In)", "value": dpi_gross, "value_type": "percent", "delta_fmt": "raw", "incomplete": incomplete_data, "delta_color_rule": "off"},
+            {"label": "Multiple ▶ MOIC (Multiple on Invested Capital)", "value": moic_gross, "value_type": "percent", "delta_fmt": "raw", "incomplete": incomplete_data, "delta_color_rule": "normal"}
         ]
-    elif assets_current_value > 0:
-        free_carry_surplus = abs(actual_investment)
-        specs2 = [
-            {"label": "Capital ▶ Free Carry Surplus", "value": free_carry_surplus, "unit": cash_asset, "delta_fmt": "raw", "delta_color_rule": "normal"},
-            {"label": "ROI ▶ Net on Value", "value": net_roi_on_value, "value_type": "percent", "delta_fmt": "raw", "incomplete": incomplete_data, "delta_color_rule": "normal"},
-            {"label": "ROI ▶ Gross on Value", "value": gross_roi_on_value, "value_type": "percent", "delta_fmt": "raw", "incomplete": incomplete_data, "delta_color_rule": "normal"},
-        ]
+
+        show_metrics_bulk(c1, specs1)
+        show_metrics_bulk(c2, specs2)
+        show_metrics_bulk(c3, specs3)
     else:
-        specs2 = []
-    # Column 3 - Multiples as % returns -----------------------------------------
-    specs3 = [
-        {"label": "Multiple ▶ RVPI (Residual Value to Paid-In)", "value": rvpi_gross, "value_type": "percent", "delta_fmt": "raw", "incomplete": incomplete_data, "delta_color_rule": "off"},
-        {"label": "Multiple ▶ DPI (Distributions to Paid-In)", "value": dpi_gross, "value_type": "percent", "delta_fmt": "raw", "incomplete": incomplete_data, "delta_color_rule": "off"},
-        {"label": "Multiple ▶ MOIC (Multiple on Invested Capital)", "value": moic_gross, "value_type": "percent", "delta_fmt": "raw", "incomplete": incomplete_data, "delta_color_rule": "normal"}
-    ]
-
-    show_metrics_bulk(c1, specs1)
-    show_metrics_bulk(c2, specs2)
-    show_metrics_bulk(c3, specs3)
+        # Column 1 - Cash & P&L figures -----------------------------------------
+        specs1 = [
+            {"label": "Market Value ▶ Open Positions", "value": market_value_open, "unit": cash_asset, "delta_fmt": "raw", "delta_color_rule": "off"},
+        ]
+        specs2 = [
+            {"label": "P&L ▶ Gross (Before Fees)", "value": gross_earnings, "unit": cash_asset, "incomplete": incomplete_data, "delta_fmt": "raw", "delta_color_rule": "normal"},
+        ]
+        specs3 = [
+            {"label": "P&L ▶ Net (After Fees)", "value": net_earnings, "unit": cash_asset, "incomplete": incomplete_data, "delta_fmt": "raw", "delta_color_rule": "normal"},
+        ]
+        show_metrics_bulk(c1, specs1)
+        show_metrics_bulk(c2, specs2)
+        show_metrics_bulk(c3, specs3)
 
 # -----------------------------------------------------------------------------
-# 6) Trades summary helpers - Advanced
+# 6) Advanced trades details helper
 # -----------------------------------------------------------------------------
 
-def _display_advanced_trades_details(trades_summary: dict, cash_asset:str, df_raw: pd.DataFrame) -> None:  # noqa: D401
+def _display_trades_details(trades_summary: dict, cash_asset:str, df_raw: pd.DataFrame, advanced_display: bool = False) -> None:  # noqa: D401
     """
     Show an advanced *trades summary* in three metric columns.
 
@@ -496,7 +568,8 @@ def _display_advanced_trades_details(trades_summary: dict, cash_asset:str, df_ra
     comparing *total*, *buy*, and *sell* trades.  Any mismatch in the
     total amount is flagged with a warning icon (⚠️) in front of the figure.
     """
-
+    summary_capital = get_overview_capital()
+    equity = summary_capital.get("equity", 0.0)
     avg_trade_summary = get_tempo_avg_trade_summary(df_raw)
     total_investment = trades_summary["BUY"]["notional"]
     total_divestment = trades_summary["SELL"]["notional"]
@@ -512,35 +585,51 @@ def _display_advanced_trades_details(trades_summary: dict, cash_asset:str, df_ra
     # ------------------------------------------------------------------
     st.markdown("---")
     c1, c2, c3 = st.columns(3)
+    if advanced_display:
+        specs1 = [
+            {"label": "GLOBAL ▶ Notional Traded", "value": total_traded, "unit": cash_asset, "delta_fmt": "raw", "delta_color_rule": "off"},
+            {"label": "GLOBAL ▶ Orders Count", "value": total_orders, "delta_fmt": "raw", "delta_color_rule": "off", "value_type": "integer"},
+            {"label": "GLOBAL ▶ Avg. Order Size", "value": avg_trade_price_order, "unit": cash_asset, "delta_fmt": "raw", "delta_color_rule": "off"},
+            {"label": "GLOBAL ▶ Paid Fees", "value": trades_summary["TOTAL"]["fee"], "unit": cash_asset, "delta_fmt": "raw", "delta_color_rule": "off"},
+            {"label": "GLOBAL ▶ Capital Churn Rate", "value": avg_trade_summary["global"]["total_notional"], "unit": f"{cash_asset} / h", "delta_fmt": "raw", "delta_color_rule": "inverse"},
+            {"label": "GLOBAL ▶ Equity Churn Rate", "value": 100*avg_trade_summary["global"]["total_notional"]/equity, "unit": f"% / h", "delta_fmt": "raw", "delta_color_rule": "inverse"},
+            {"label": "GLOBAL ▶ Order Churn Rate", "value": avg_trade_summary["global"]["order_count"], "unit": f"orders / h", "delta_fmt": "raw", "delta_color_rule": "inverse"},
+            {"label": "GLOBAL ▶ Fee Burn Rate", "value": avg_trade_summary["global"]["total_fee"], "unit": f"{cash_asset} / h", "delta_fmt": "raw", "delta_color_rule": "inverse"},
+        ]
+        specs2 = [
+            {"label": "BUY ▶ Notional Invested", "value": total_investment, "unit": cash_asset, "delta_fmt": "raw", "delta_color_rule": "off"},
+            {"label": "BUY ▶ Orders Count", "value": count_buy_orders, "delta_fmt": "raw", "delta_color_rule": "off", "value_type": "integer"},
+            {"label": "BUY ▶ Avg. Order Size", "value": avg_buy_price_order, "unit": cash_asset, "delta_fmt": "raw", "delta_color_rule": "off"},
+            {"label": "BUY ▶ Paid Fees", "value": trades_summary["BUY"]["fee"], "unit": cash_asset, "delta_fmt": "raw", "delta_color_rule": "off"},
+            {"label": "BUY ▶ Capital Churn Rate", "value": avg_trade_summary["buy"]["total_notional"], "unit": f"{cash_asset} / h", "delta_fmt": "raw", "delta_color_rule": "inverse"},
+            {"label": "BUY ▶ Equity Churn Rate", "value": 100*avg_trade_summary["buy"]["total_notional"]/equity, "unit": f"% / h", "delta_fmt": "raw", "delta_color_rule": "inverse"},
+            {"label": "BUY ▶ Order Churn Rate", "value": avg_trade_summary["buy"]["order_count"], "unit": f"orders / h", "delta_fmt": "raw", "delta_color_rule": "inverse"},
+            {"label": "BUY ▶ Avg. Fee Burn Rate", "value": avg_trade_summary["buy"]["total_fee"], "unit": f"{cash_asset} / h", "delta_fmt": "raw", "delta_color_rule": "inverse"},
+        ]
+        specs3 = [
+            {"label": "SELL ▶ Notional Divested", "value": total_divestment, "unit": cash_asset, "delta_fmt": "raw", "delta_color_rule": "off"},
+            {"label": "SELL ▶ Orders Count", "value": count_sell_orders, "delta_fmt": "raw", "delta_color_rule": "off", "value_type": "integer"},
+            {"label": "SELL ▶ Avg. Order Size", "value": avg_sell_price_order, "unit": cash_asset, "delta_fmt": "raw", "delta_color_rule": "off"},
+            {"label": "SELL ▶ Paid Fees", "value": trades_summary["SELL"]["fee"], "unit": cash_asset, "delta_fmt": "raw", "delta_color_rule": "off"},
+            {"label": "SELL ▶ Capital Churn Rate", "value": avg_trade_summary["sell"]["total_notional"], "unit": f"{cash_asset} / h", "delta_fmt": "raw", "delta_color_rule": "inverse"},
+            {"label": "SELL ▶ Equity Churn Rate", "value": 100*avg_trade_summary["sell"]["total_notional"]/equity, "unit": f"% / h", "delta_fmt": "raw", "delta_color_rule": "inverse"},
+            {"label": "SELL ▶ Order Churn Rate", "value": avg_trade_summary["sell"]["order_count"], "unit": f"orders / h", "delta_fmt": "raw", "delta_color_rule": "inverse"},
+            {"label": "SELL ▶ Avg. Fee Burn Rate", "value": avg_trade_summary["sell"]["total_fee"], "unit": f"{cash_asset} / h", "delta_fmt": "raw", "delta_color_rule": "inverse"},
+        ]
 
-    specs1 = [
-        {"label": "GLOBAL ▶ Notional Traded", "value": total_traded, "unit": cash_asset, "delta_fmt": "raw", "delta_color_rule": "off"},
-        {"label": "GLOBAL ▶ Orders Count", "value": total_orders, "delta_fmt": "raw", "delta_color_rule": "off", "value_type": "integer"},
-        {"label": "GLOBAL ▶ Avg. Order Size", "value": avg_trade_price_order, "unit": cash_asset, "delta_fmt": "raw", "delta_color_rule": "off"},
-        {"label": "GLOBAL ▶ Paid Fees", "value": trades_summary["TOTAL"]["fee"], "unit": cash_asset, "delta_fmt": "raw", "delta_color_rule": "off"},
-        {"label": "GLOBAL ▶ Avg. Notional Traded per Hour", "value": avg_trade_summary["global"]["total_notional"], "unit": f"{cash_asset} / h", "delta_fmt": "raw", "delta_color_rule": "inverse"},
-        {"label": "GLOBAL ▶ Avg. Orders per Hour", "value": avg_trade_summary["global"]["order_count"], "unit": f"orders / h", "delta_fmt": "raw", "delta_color_rule": "inverse"},
-        {"label": "GLOBAL ▶ Avg. Paid Fees per Hour", "value": avg_trade_summary["global"]["total_fee"], "unit": f"{cash_asset} / h", "delta_fmt": "raw", "delta_color_rule": "inverse"},
-    ]
-    specs2 = [
-        {"label": "BUY ▶ Notional Invested", "value": total_investment, "unit": cash_asset, "delta_fmt": "raw", "delta_color_rule": "off"},
-        {"label": "BUY ▶ Orders Count", "value": count_buy_orders, "delta_fmt": "raw", "delta_color_rule": "off", "value_type": "integer"},
-        {"label": "BUY ▶ Avg. Order Size", "value": avg_buy_price_order, "unit": cash_asset, "delta_fmt": "raw", "delta_color_rule": "off"},
-        {"label": "BUY ▶ Paid Fees", "value": trades_summary["BUY"]["fee"], "unit": cash_asset, "delta_fmt": "raw", "delta_color_rule": "off"},
-        {"label": "BUY ▶ Avg. Notional Traded per Hour", "value": avg_trade_summary["buy"]["total_notional"], "unit": f"{cash_asset} / h", "delta_fmt": "raw", "delta_color_rule": "inverse"},
-        {"label": "BUY ▶ Avg. Orders per Hour", "value": avg_trade_summary["buy"]["order_count"], "unit": f"orders / h", "delta_fmt": "raw", "delta_color_rule": "inverse"},
-        {"label": "BUY ▶ Avg. Paid Fees per Hour", "value": avg_trade_summary["buy"]["total_fee"], "unit": f"{cash_asset} / h", "delta_fmt": "raw", "delta_color_rule": "inverse"},
-    ]
-    specs3 = [
-        {"label": "SELL ▶ Notional Divested", "value": total_divestment, "unit": cash_asset, "delta_fmt": "raw", "delta_color_rule": "off"},
-        {"label": "SELL ▶ Orders Count", "value": count_sell_orders, "delta_fmt": "raw", "delta_color_rule": "off", "value_type": "integer"},
-        {"label": "SELL ▶ Avg. Order Size", "value": avg_sell_price_order, "unit": cash_asset, "delta_fmt": "raw", "delta_color_rule": "off"},
-        {"label": "SELL ▶ Paid Fees", "value": trades_summary["SELL"]["fee"], "unit": cash_asset, "delta_fmt": "raw", "delta_color_rule": "off"},
-        {"label": "SELL ▶ Avg. Notional Traded per Hour", "value": avg_trade_summary["sell"]["total_notional"], "unit": f"{cash_asset} / h", "delta_fmt": "raw", "delta_color_rule": "inverse"},
-        {"label": "SELL ▶ Avg. Orders per Hour", "value": avg_trade_summary["sell"]["order_count"], "unit": f"orders / h", "delta_fmt": "raw", "delta_color_rule": "inverse"},
-        {"label": "SELL ▶ Avg. Paid Fees per Hour", "value": avg_trade_summary["sell"]["total_fee"], "unit": f"{cash_asset} / h", "delta_fmt": "raw", "delta_color_rule": "inverse"},
-    ]
-
-    show_metrics_bulk(c1, specs1)
-    show_metrics_bulk(c2, specs2)
-    show_metrics_bulk(c3, specs3)
+        show_metrics_bulk(c1, specs1)
+        show_metrics_bulk(c2, specs2)
+        show_metrics_bulk(c3, specs3)
+    else:
+        specs1 = [
+            {"label": "GLOBAL ▶ Notional Traded", "value": total_traded, "unit": cash_asset, "delta_fmt": "raw", "delta_color_rule": "off"},
+        ]
+        specs2 = [
+            {"label": "GLOBAL ▶ Orders Count", "value": total_orders, "delta_fmt": "raw", "delta_color_rule": "off", "value_type": "integer"},
+        ]
+        specs3 = [
+            {"label": "GLOBAL ▶ Paid Fees", "value": trades_summary["TOTAL"]["fee"], "unit": cash_asset, "delta_fmt": "raw", "delta_color_rule": "off"},
+        ]
+        show_metrics_bulk(c1, specs1)
+        show_metrics_bulk(c2, specs2)
+        show_metrics_bulk(c3, specs3)

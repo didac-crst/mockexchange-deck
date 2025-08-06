@@ -91,6 +91,27 @@ def _extract_assets(raw):  # noqa: D401 – helper, not user-facing
 # Public API helpers (called by Streamlit pages)
 # -----------------------------------------------------------------------------
 
+def get_overview_capital() -> dict:
+    """Return a dict with the current capital summary.
+
+    The dict contains:
+    - `equity` – current equity in quote asset (e.g. USDT)
+    - `deposits` – total deposits in quote asset
+    - `withdrawals` – total withdrawals in quote asset
+    - `profit_loss` – current profit/loss in quote asset
+
+    """
+    res = _get("/overview/capital")
+    if not isinstance(res, dict):
+        raise TypeError(f"Expected dict from /overview/capital, got {type(res)}")
+    
+    # Ensure all expected keys are present
+    expected_keys = {"equity", "deposits", "withdrawals", "profit_loss"}
+    if not expected_keys.issubset(res.keys()):
+        raise KeyError(f"Missing keys in /overview/capital response: {expected_keys - res.keys()}")
+
+    return res    
+
 def get_prices(tickers: list[str]) -> dict[str, float]:
     """Return a mapping of ``{ticker: last_price_in_quote}``.
 

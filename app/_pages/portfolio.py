@@ -27,7 +27,7 @@ import streamlit as st
 
 # First‑party / project --------------------------------------------------------
 from app.services.api import get_balance
-from ._helpers import _display_advanced_portfolio_details, _format_significant_float
+from ._helpers import _display_portfolio_details, _format_significant_float, advanced_filter_toggle
 
 # -----------------------------------------------------------------------------
 # Page renderer
@@ -55,6 +55,7 @@ def render() -> None:  # noqa: D401 – imperative mood is fine
     # ------------------------------------------------------------------
     st.set_page_config(page_title="Portfolio")  # browser tab + sidebar label
     st.title("Portfolio")                       # big header inside the page
+    params = st.query_params                    # returns a QueryParamsProxy
 
     data = get_balance()  # dict: ``equity``, ``quote_asset``, ``assets_df``
 
@@ -66,26 +67,12 @@ def render() -> None:  # noqa: D401 – imperative mood is fine
     # ------------------------------------------------------------------
     # 1) Sidebar – advanced display toggle
     # ------------------------------------------------------------------
-    st.sidebar.header("Filters")
-    advanced_display = st.sidebar.checkbox(
-        "Display advanced details", value=False, key="advanced_display"
-    )
-    if advanced_display:
-        st.sidebar.info(
-            "Advanced details include total/free/used amounts, "
-            "for both cash and assets comparing portfolio and order book sources."
-        )
+    advanced_display = advanced_filter_toggle()
 
     # ------------------------------------------------------------------
-    # 2) Equity metric (simple vs advanced)
+    # 2) Portfolio metrics (simple vs advanced)
     # ------------------------------------------------------------------
-    if not advanced_display:
-        # Show a single headline number when advanced mode is OFF.
-        equity_str = f"{data['equity']:,.2f} {data['quote_asset']}"
-        st.metric("Equity", equity_str)
-    else:
-        # Advanced mode displays a full cash/assets breakdown defined in helpers.
-        _display_advanced_portfolio_details()
+    _display_portfolio_details(advanced_display=advanced_display)
 
     # ------------------------------------------------------------------
     # 3) Build a numeric DataFrame with helper columns
