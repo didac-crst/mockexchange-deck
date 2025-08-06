@@ -25,7 +25,7 @@ import pandas as pd
 import streamlit as st
 
 # Project ---------------------------------------------------------------------
-from app.services.api import get_assets_overview, get_overview_capital
+from app.services.api import get_assets_overview
 
 # -----------------------------------------------------------------------------
 # 0) Global page configuration – must run before any Streamlit call
@@ -465,7 +465,7 @@ def _display_portfolio_details(advanced_display: bool = False) -> None:  # noqa:
 # 5) Advanced performance details helper
 # -----------------------------------------------------------------------------
 
-def _display_performance_details(trades_summary: dict, cash_asset:str, advanced_display: bool = False) -> None:
+def _display_performance_details(summary_capital: dict, trades_summary: dict, cash_asset:str, advanced_display: bool = False) -> None:
     """
     Show a basic *trades summary* in three metric columns.
 
@@ -475,14 +475,17 @@ def _display_performance_details(trades_summary: dict, cash_asset:str, advanced_
     total amount is flagged with a warning icon (⚠️) in front of the figure.
     """
 
-    # ---- balance ---------------------------------------------------
-    balance_summary = summary.get("balance_source", {})
+    # --- capital -------------------------------------------------
+    equity = summary_capital.get("equity", 0.0)
+    deposits = summary_capital.get("deposits", 0.0)
+    withdrawals = summary_capital.get("withdrawals", 0.0)
+    total_investment = deposits - withdrawals  # net invested capital
 
     # --- core amounts --------------------------------------------------
     incomplete_data        = trades_summary["TOTAL"]["amount_value_incomplete"]
-    total_investment       = trades_summary["BUY"]["notional"]
-    total_divestment       = trades_summary["SELL"]["notional"]
-    actual_investment      = total_investment - total_divestment
+    total_buys             = trades_summary["BUY"]["notional"]
+    total_sells            = trades_summary["SELL"]["notional"]
+    capital_market_exposed = total_buys - total_sells
     total_paid_fees        = trades_summary["TOTAL"]["fee"]
 
     buy_current_value      = trades_summary["BUY"]["amount_value"] # Current value of all buy trades - even if part of them have already been sold
@@ -490,13 +493,12 @@ def _display_performance_details(trades_summary: dict, cash_asset:str, advanced_
     assets_current_value   = buy_current_value - sell_current_value # still held
 
     # --- cash & P&L figures -------------------------------------------
-    gross_earnings         = assets_current_value - actual_investment  # before fees
+    gross_earnings         = equity - total_investment  # before fees
     net_earnings           = gross_earnings - total_paid_fees  # after fees
-    market_value_open      = assets_current_value
 
     # --- ROI on current risk ------------------------------------------
-    gross_roi_on_cost      = gross_earnings / actual_investment if actual_investment > 0 else None  # before fees
-    net_roi_on_cost        = net_earnings / actual_investment if actual_investment > 0 else None # after fees
+    gross_roi_on_cost      = gross_earnings / total_investment if total_investment > 0 else None  # before fees
+    net_roi_on_cost        = net_earnings / total_investment if total_investment > 0 else None # after fees
     gross_roi_on_value     = gross_earnings / assets_current_value if assets_current_value > 0 else None # before fees
     net_roi_on_value       = net_earnings / assets_current_value if assets_current_value > 0 else None # after fees
 
@@ -504,9 +506,9 @@ def _display_performance_details(trades_summary: dict, cash_asset:str, advanced_
     total_investment = total_investment if total_investment or total_investment > 0 else None  # avoid division by zero
 
     # --- multiples (gross) --------------------------------------------
-    rvpi_gross = assets_current_value / total_investment if total_investment else None # RVPI = Residual Value to Paid-In
-    dpi_gross  = total_divestment / total_investment if total_investment else None # DPI = Distributions to Paid-In
-    moic_gross = dpi_gross + rvpi_gross if None not in (dpi_gross, rvpi_gross) else None # MOIC = Multiple on Invested Capital
+    rvpi_gross = equity / total_investment if total_investment else None # RVPI = Residual Value to Paid-In
+    dpi_gross  = withdrawals / total_investment if total_investment else None # DPI = Distributions to Paid-In
+    tvpi_gross = dpi_gross + rvpi_gross if None not in (dpi_gross, rvpi_gross) else None # TVPI = Total Value to Paid-In
 
     # Total trades ------------------------------------------------------------
     # ------------------------------------------------------------------
@@ -517,20 +519,20 @@ def _display_performance_details(trades_summary: dict, cash_asset:str, advanced_
     if advanced_display:
         # Column 1 - Cash & P&L figures -----------------------------------------
         specs1 = [
-            {"label": "Market Value ▶ Open Positions", "value": market_value_open, "unit": cash_asset, "delta_fmt": "raw", "delta_color_rule": "off"},
+            {"label": "Capital ▶ Market Exposed", "value": capital_market_exposed, "unit": cash_asset, "delta_fmt": "raw", "delta_color_rule": "off"},
             {"label": "P&L ▶ Gross (Before Fees)", "value": gross_earnings, "unit": cash_asset, "incomplete": incomplete_data, "delta_fmt": "raw", "delta_color_rule": "normal"},
             {"label": "P&L ▶ Net (After Fees)", "value": net_earnings, "unit": cash_asset, "incomplete": incomplete_data, "delta_fmt": "raw", "delta_color_rule": "normal"},
         ]
         # Column 2 - ROI on current risk -----------------------------------------
 
-        if actual_investment > 0:
+        if total_investment > 0:
             specs2 = [
-                {"label": "Capital ▶ At Risk (Cost)", "value": actual_investment, "unit": cash_asset, "delta_fmt": "raw", "delta_color_rule": "off"},
+                {"label": "Capital ▶ At Risk (Cost)", "value": total_investment, "unit": cash_asset, "delta_fmt": "raw", "delta_color_rule": "off"},
                 {"label": "ROI ▶ Gross on Cost", "value": gross_roi_on_cost, "value_type": "percent", "delta_fmt": "raw", "incomplete": incomplete_data, "delta_color_rule": "normal"},
                 {"label": "ROI ▶ Net on Cost", "value": net_roi_on_cost, "value_type": "percent", "delta_fmt": "raw", "incomplete": incomplete_data, "delta_color_rule": "normal"},
             ]
         elif assets_current_value > 0:
-            free_carry_surplus = abs(actual_investment)
+            free_carry_surplus = abs(total_investment)
             specs2 = [
                 {"label": "Capital ▶ Free Carry Surplus", "value": free_carry_surplus, "unit": cash_asset, "delta_fmt": "raw", "delta_color_rule": "normal"},
                 {"label": "ROI ▶ Gross on Value", "value": gross_roi_on_value, "value_type": "percent", "delta_fmt": "raw", "incomplete": incomplete_data, "delta_color_rule": "normal"},
@@ -539,10 +541,15 @@ def _display_performance_details(trades_summary: dict, cash_asset:str, advanced_
         else:
             specs2 = []
         # Column 3 - Multiples as % returns -----------------------------------------
-        specs3 = [
-            {"label": "Multiple ▶ RVPI (Residual Value to Paid-In)", "value": rvpi_gross, "value_type": "percent", "delta_fmt": "raw", "incomplete": incomplete_data, "delta_color_rule": "off"},
-            {"label": "Multiple ▶ DPI (Distributions to Paid-In)", "value": dpi_gross, "value_type": "percent", "delta_fmt": "raw", "incomplete": incomplete_data, "delta_color_rule": "off"},
-            {"label": "Multiple ▶ MOIC (Multiple on Invested Capital)", "value": moic_gross, "value_type": "percent", "delta_fmt": "raw", "incomplete": incomplete_data, "delta_color_rule": "normal"}
+        if withdrawals <= 0:
+            specs3 = [
+                {"label": "Multiple ▶ TVPI (Total Value to Paid-In)", "value": tvpi_gross, "value_type": "percent", "delta_fmt": "raw", "incomplete": incomplete_data, "delta_color_rule": "normal"}
+            ]
+        else:
+            specs3 = [
+                {"label": "Multiple ▶ RVPI (Residual Value to Paid-In)", "value": rvpi_gross, "value_type": "percent", "delta_fmt": "raw", "incomplete": incomplete_data, "delta_color_rule": "off"},
+                {"label": "Multiple ▶ DPI (Distributions to Paid-In)", "value": dpi_gross, "value_type": "percent", "delta_fmt": "raw", "incomplete": incomplete_data, "delta_color_rule": "off"},
+                {"label": "Multiple ▶ TVPI (Total Value to Paid-In)", "value": tvpi_gross, "value_type": "percent", "delta_fmt": "raw", "incomplete": incomplete_data, "delta_color_rule": "normal"}
         ]
 
         show_metrics_bulk(c1, specs1)
@@ -551,7 +558,7 @@ def _display_performance_details(trades_summary: dict, cash_asset:str, advanced_
     else:
         # Column 1 - Cash & P&L figures -----------------------------------------
         specs1 = [
-            {"label": "Market Value ▶ Open Positions", "value": market_value_open, "unit": cash_asset, "delta_fmt": "raw", "delta_color_rule": "off"},
+            {"label": "P&L ▶ Equity", "value": equity, "unit": cash_asset, "delta_fmt": "raw", "delta_color_rule": "off"},
         ]
         specs2 = [
             {"label": "P&L ▶ Gross (Before Fees)", "value": gross_earnings, "unit": cash_asset, "incomplete": incomplete_data, "delta_fmt": "raw", "delta_color_rule": "normal"},
@@ -567,7 +574,7 @@ def _display_performance_details(trades_summary: dict, cash_asset:str, advanced_
 # 6) Advanced trades details helper
 # -----------------------------------------------------------------------------
 
-def _display_trades_details(trades_summary: dict, cash_asset:str, df_raw: pd.DataFrame, advanced_display: bool = False) -> None:  # noqa: D401
+def _display_trades_details(summary_capital: dict, trades_summary: dict, cash_asset:str, df_raw: pd.DataFrame, advanced_display: bool = False) -> None:  # noqa: D401
     """
     Show an advanced *trades summary* in three metric columns.
 
@@ -576,7 +583,6 @@ def _display_trades_details(trades_summary: dict, cash_asset:str, df_raw: pd.Dat
     comparing *total*, *buy*, and *sell* trades.  Any mismatch in the
     total amount is flagged with a warning icon (⚠️) in front of the figure.
     """
-    summary_capital = get_overview_capital()
     equity = summary_capital.get("equity", 0.0)
     avg_trade_summary, period_agg = get_tempo_avg_trade_summary(df_raw, equity)
     # ------------------------------------------------------------------

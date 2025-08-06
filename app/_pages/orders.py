@@ -24,7 +24,7 @@ import pandas as pd
 import streamlit as st
 from dotenv import load_dotenv
 
-from app.services.api import get_orders, get_trades_overview
+from app.services.api import get_orders, get_trades_overview, get_overview_capital
 from ._helpers import (
     _human_ts,
     _add_details_column,
@@ -116,6 +116,7 @@ def render() -> None:  # noqa: D401 – imperative mood is clearer here
         return  # early exit – nothing else to do
 
     trades_summary, cash_asset = get_trades_overview()
+    summary_capital = get_overview_capital()
 
     # ------------------------------------------------------------------
     # Sidebar – advanced equity breakdown & toggle
@@ -127,7 +128,7 @@ def render() -> None:  # noqa: D401 – imperative mood is clearer here
     # 3) Display trade metrics (simple vs advanced)
     # ------------------------------------------------------------------
 
-    _display_trades_details(trades_summary, cash_asset, df_raw, advanced_display)
+    _display_trades_details(summary_capital, trades_summary, cash_asset, df_raw, advanced_display)
 
     # `df_copy` will be mutated for visual purposes; keep df_raw pristine.
     df_copy = df_raw.copy()
