@@ -23,6 +23,7 @@ from typing import Literal
 from datetime import datetime, timezone
 import pandas as pd
 import streamlit as st
+import plotly.graph_objects as go
 
 # Project ---------------------------------------------------------------------
 from app.services.api import get_assets_overview
@@ -83,6 +84,15 @@ def advanced_filter_toggle() -> bool:
 TS_FMT = "%d/%m %H:%M:%S"  # Timestamp format for human-readable dates
 ZERO_DISPLAY = "--"  # Default display for zero values
 _W = "⚠️"  # warning icon – reused inline for brevity
+CHART_COLORS = {
+    # Chart colours for performance metrics
+    "blue": "#0f8ce5",  # blue
+    "red": "#f15151",  # red
+    "green": "#07bd10",  # green
+    "orange": "#f1a151",  # orange
+    "yellow": "#fed635",  # yellow
+    "green_light": "#b0f2b0",  # light green
+}
 
 # Local lambdas for consistent formatting ---------------------------
 fmt_num = lambda v, warning = False: f"{v:,.0f}" if not warning else f"^{_W} {v:,.0f}"
@@ -436,17 +446,17 @@ def _display_portfolio_details(advanced_display: bool = False) -> None:  # noqa:
         ]
         # Cash --------------------------------------------------------------
         specs2 = [
-            {"label": "Cash ▶ Total", "value": balance_summary["cash_total_value"], "unit": cash_asset, "delta_fmt": "raw", "delta_color_rule": "off"},
-            {"label": "Cash ▶ Free", "value": balance_summary["cash_free_value"], "unit": cash_asset, "delta_fmt": "raw", "delta_color_rule": "off"},
-            {"label": "Cash ▶ Frozen", "value": balance_summary["cash_frozen_value"], "unit": cash_asset, "incomplete": mismatch["cash_frozen_value"], "delta_fmt": "raw", "delta_color_rule": "off"},
-            {"label": "Cash ▶ Frozen [Order book]", "value": orders_summary["cash_frozen_value"], "unit": cash_asset, "incomplete": mismatch["cash_frozen_value"], "delta_fmt": "raw", "delta_color_rule": "off", "incomplete_display": True}
+            {"label": "Cash Equivalents ▶ Total", "value": balance_summary["cash_total_value"], "unit": cash_asset, "delta_fmt": "raw", "delta_color_rule": "off"},
+            {"label": "Cash Equivalents ▶ Free", "value": balance_summary["cash_free_value"], "unit": cash_asset, "delta_fmt": "raw", "delta_color_rule": "off"},
+            {"label": "Cash Equivalents ▶ Frozen", "value": balance_summary["cash_frozen_value"], "unit": cash_asset, "incomplete": mismatch["cash_frozen_value"], "delta_fmt": "raw", "delta_color_rule": "off"},
+            {"label": "Cash Equivalents ▶ Frozen [Order book]", "value": orders_summary["cash_frozen_value"], "unit": cash_asset, "incomplete": mismatch["cash_frozen_value"], "delta_fmt": "raw", "delta_color_rule": "off", "incomplete_display": True}
         ]
         # Assets ------------------------------------------------------------
         specs3 = [
-            {"label": "Assets Value ▶ Total", "value": balance_summary["assets_total_value"], "unit": cash_asset, "delta_fmt": "raw", "delta_color_rule": "off"},
-            {"label": "Assets Value ▶ Free", "value": balance_summary["assets_free_value"], "unit": cash_asset, "delta_fmt": "raw", "delta_color_rule": "off"},
-            {"label": "Assets Value ▶ Frozen", "value": balance_summary["assets_frozen_value"], "unit": cash_asset, "incomplete": mismatch["assets_frozen_value"], "delta_fmt": "raw", "delta_color_rule": "off"},
-            {"label": "Assets Value ▶ Frozen [Order book]", "value": orders_summary["assets_frozen_value"], "unit": cash_asset, "incomplete": mismatch["assets_frozen_value"], "delta_fmt": "raw", "delta_color_rule": "off", "incomplete_display": True}
+            {"label": "Volatile Assets ▶ Total", "value": balance_summary["assets_total_value"], "unit": cash_asset, "delta_fmt": "raw", "delta_color_rule": "off"},
+            {"label": "Volatile Assets ▶ Free", "value": balance_summary["assets_free_value"], "unit": cash_asset, "delta_fmt": "raw", "delta_color_rule": "off"},
+            {"label": "Volatile Assets ▶ Frozen", "value": balance_summary["assets_frozen_value"], "unit": cash_asset, "incomplete": mismatch["assets_frozen_value"], "delta_fmt": "raw", "delta_color_rule": "off"},
+            {"label": "Volatile Assets ▶ Frozen [Order book]", "value": orders_summary["assets_frozen_value"], "unit": cash_asset, "incomplete": mismatch["assets_frozen_value"], "delta_fmt": "raw", "delta_color_rule": "off", "incomplete_display": True}
         ]
 
 
@@ -465,7 +475,27 @@ def _display_portfolio_details(advanced_display: bool = False) -> None:  # noqa:
 # 5) Advanced performance details helper
 # -----------------------------------------------------------------------------
 
-def _display_performance_details(summary_capital: dict, trades_summary: dict, cash_asset:str, advanced_display: bool = False) -> None:
+def _display_performance_details(
+        equity: float,
+        paid_in_capital: float,
+        distributions: float,
+        net_investment: float,
+        incomplete_data: bool,
+        total_buys: float,
+        total_sells: float,
+        liquid_assets: float,
+        volatile_assets: float,
+        total_paid_fees: float,
+        buy_current_value: float,
+        sell_current_value: float,
+        gross_earnings: float,
+        net_earnings: float,
+        rvpi: float,
+        dpi: float,
+        tvpi: float,
+        cash_asset: str,
+        advanced_display: bool
+) -> None:
     """
     Show a basic *trades summary* in three metric columns.
 
@@ -474,43 +504,12 @@ def _display_performance_details(summary_capital: dict, trades_summary: dict, ca
     comparing *total*, *buy*, and *sell* trades.  Any mismatch in the
     total amount is flagged with a warning icon (⚠️) in front of the figure.
     """
-
-    # --- capital -------------------------------------------------
-    equity = summary_capital.get("equity", 0.0)
-    deposits = summary_capital.get("deposits", 0.0)
-    withdrawals = summary_capital.get("withdrawals", 0.0)
-    total_investment = deposits - withdrawals  # net invested capital
-
-    # --- core amounts --------------------------------------------------
-    incomplete_data        = trades_summary["TOTAL"]["amount_value_incomplete"]
-    total_buys             = trades_summary["BUY"]["notional"]
-    total_sells            = trades_summary["SELL"]["notional"]
-    capital_market_exposed = total_buys - total_sells
-    total_paid_fees        = trades_summary["TOTAL"]["fee"]
-
-    buy_current_value      = trades_summary["BUY"]["amount_value"] # Current value of all buy trades - even if part of them have already been sold
-    sell_current_value     = trades_summary["SELL"]["amount_value"] # Current value of all sell trades - somehow is the missing opportunity value
-    assets_current_value   = buy_current_value - sell_current_value # still held
-
-    # --- cash & P&L figures -------------------------------------------
-    gross_earnings         = equity - total_investment  # before fees
-    net_earnings           = gross_earnings - total_paid_fees  # after fees
-
     # --- ROI on current risk ------------------------------------------
-    gross_roi_on_cost      = gross_earnings / total_investment if total_investment > 0 else None  # before fees
-    net_roi_on_cost        = net_earnings / total_investment if total_investment > 0 else None # after fees
-    gross_roi_on_value     = gross_earnings / assets_current_value if assets_current_value > 0 else None # before fees
-    net_roi_on_value       = net_earnings / assets_current_value if assets_current_value > 0 else None # after fees
+    gross_roi_on_cost      = gross_earnings / net_investment if net_investment > 0 else None  # before fees
+    net_roi_on_cost        = net_earnings / net_investment if net_investment > 0 else None # after fees
+    gross_roi_on_value     = gross_earnings / equity if equity > 0 else None # before fees
+    net_roi_on_value       = net_earnings / equity if equity > 0 else None # after fees
 
-    # --- multiples (gross) --------------------------------------------
-    total_investment = total_investment if total_investment or total_investment > 0 else None  # avoid division by zero
-
-    # --- multiples (gross) --------------------------------------------
-    rvpi_gross = equity / total_investment if total_investment else None # RVPI = Residual Value to Paid-In
-    dpi_gross  = withdrawals / total_investment if total_investment else None # DPI = Distributions to Paid-In
-    tvpi_gross = dpi_gross + rvpi_gross if None not in (dpi_gross, rvpi_gross) else None # TVPI = Total Value to Paid-In
-
-    # Total trades ------------------------------------------------------------
     # ------------------------------------------------------------------
     # Render three metric columns
     # ------------------------------------------------------------------
@@ -519,20 +518,20 @@ def _display_performance_details(summary_capital: dict, trades_summary: dict, ca
     if advanced_display:
         # Column 1 - Cash & P&L figures -----------------------------------------
         specs1 = [
-            {"label": "Capital ▶ Market Exposed", "value": capital_market_exposed, "unit": cash_asset, "delta_fmt": "raw", "delta_color_rule": "off"},
+            {"label": "Capital ▶ Equity", "value": equity, "unit": cash_asset, "delta_fmt": "raw", "delta_color_rule": "off"},
             {"label": "P&L ▶ Gross (Before Fees)", "value": gross_earnings, "unit": cash_asset, "incomplete": incomplete_data, "delta_fmt": "raw", "delta_color_rule": "normal"},
             {"label": "P&L ▶ Net (After Fees)", "value": net_earnings, "unit": cash_asset, "incomplete": incomplete_data, "delta_fmt": "raw", "delta_color_rule": "normal"},
         ]
         # Column 2 - ROI on current risk -----------------------------------------
 
-        if total_investment > 0:
+        if net_investment > 0:
             specs2 = [
-                {"label": "Capital ▶ At Risk (Cost)", "value": total_investment, "unit": cash_asset, "delta_fmt": "raw", "delta_color_rule": "off"},
+                {"label": "Capital ▶ At Risk (Cost)", "value": net_investment, "unit": cash_asset, "delta_fmt": "raw", "delta_color_rule": "off"},
                 {"label": "ROI ▶ Gross on Cost", "value": gross_roi_on_cost, "value_type": "percent", "delta_fmt": "raw", "incomplete": incomplete_data, "delta_color_rule": "normal"},
                 {"label": "ROI ▶ Net on Cost", "value": net_roi_on_cost, "value_type": "percent", "delta_fmt": "raw", "incomplete": incomplete_data, "delta_color_rule": "normal"},
             ]
-        elif assets_current_value > 0:
-            free_carry_surplus = abs(total_investment)
+        elif equity > 0:
+            free_carry_surplus = abs(net_investment)
             specs2 = [
                 {"label": "Capital ▶ Free Carry Surplus", "value": free_carry_surplus, "unit": cash_asset, "delta_fmt": "raw", "delta_color_rule": "normal"},
                 {"label": "ROI ▶ Gross on Value", "value": gross_roi_on_value, "value_type": "percent", "delta_fmt": "raw", "incomplete": incomplete_data, "delta_color_rule": "normal"},
@@ -541,16 +540,16 @@ def _display_performance_details(summary_capital: dict, trades_summary: dict, ca
         else:
             specs2 = []
         # Column 3 - Multiples as % returns -----------------------------------------
-        if withdrawals <= 0:
+        if distributions > 0:
             specs3 = [
-                {"label": "Multiple ▶ TVPI (Total Value to Paid-In)", "value": tvpi_gross, "value_type": "percent", "delta_fmt": "raw", "incomplete": incomplete_data, "delta_color_rule": "normal"}
+                {"label": "Multiple ▶ RVPI (Residual Value to Paid-In)", "value": rvpi, "value_type": "percent", "delta_fmt": "raw", "incomplete": incomplete_data, "delta_color_rule": "off"},
+                {"label": "Multiple ▶ DPI (Distributions to Paid-In)", "value": dpi, "value_type": "percent", "delta_fmt": "raw", "incomplete": incomplete_data, "delta_color_rule": "off"},
+                {"label": "Multiple ▶ TVPI (Total Value to Paid-In)", "value": tvpi, "value_type": "percent", "delta_fmt": "raw", "incomplete": incomplete_data, "delta_color_rule": "normal"}
             ]
         else:
             specs3 = [
-                {"label": "Multiple ▶ RVPI (Residual Value to Paid-In)", "value": rvpi_gross, "value_type": "percent", "delta_fmt": "raw", "incomplete": incomplete_data, "delta_color_rule": "off"},
-                {"label": "Multiple ▶ DPI (Distributions to Paid-In)", "value": dpi_gross, "value_type": "percent", "delta_fmt": "raw", "incomplete": incomplete_data, "delta_color_rule": "off"},
-                {"label": "Multiple ▶ TVPI (Total Value to Paid-In)", "value": tvpi_gross, "value_type": "percent", "delta_fmt": "raw", "incomplete": incomplete_data, "delta_color_rule": "normal"}
-        ]
+                {"label": "Multiple ▶ TVPI (Total Value to Paid-In)", "value": tvpi, "value_type": "percent", "delta_fmt": "raw", "incomplete": incomplete_data, "delta_color_rule": "normal"}
+            ]
 
         show_metrics_bulk(c1, specs1)
         show_metrics_bulk(c2, specs2)
@@ -653,14 +652,92 @@ def _display_trades_details(summary_capital: dict, trades_summary: dict, cash_as
         show_metrics_bulk(c3, specs3)
     else:
         specs1 = [
-            {"label": "GLOBAL ▶ Notional Traded", "value": total_traded, "unit": cash_asset, "delta_fmt": "raw", "delta_color_rule": "off"},
+            {"label": "GLOBAL ▶ Notional Traded", "value": global_traded, "unit": cash_asset, "delta_fmt": "raw", "delta_color_rule": "off"},
         ]
         specs2 = [
-            {"label": "GLOBAL ▶ Orders Count", "value": total_orders, "delta_fmt": "raw", "delta_color_rule": "off", "value_type": "integer"},
+            {"label": "GLOBAL ▶ Orders Count", "value": global_orders, "delta_fmt": "raw", "delta_color_rule": "off", "value_type": "integer"},
         ]
         specs3 = [
-            {"label": "GLOBAL ▶ Paid Fees", "value": trades_summary["TOTAL"]["fee"], "unit": cash_asset, "delta_fmt": "raw", "delta_color_rule": "off"},
+            {"label": "GLOBAL ▶ Paid Fees", "value": global_paid_fees, "unit": cash_asset, "delta_fmt": "raw", "delta_color_rule": "off"},
         ]
         show_metrics_bulk(c1, specs1)
         show_metrics_bulk(c2, specs2)
         show_metrics_bulk(c3, specs3)
+
+# -----------------------------------------------------------------------------
+# 7) Advanced orders details helper
+# -----------------------------------------------------------------------------
+
+def tvpi_gauge(
+    tvpi: float,
+    bands=((0, 0.8,  CHART_COLORS['red']),
+            (0.8, 1.0, CHART_COLORS['orange']),
+            (1.0, 1.2, CHART_COLORS['yellow']),
+            (1.2, 1.5, CHART_COLORS['green_light']),
+            (1.5, float("inf"), CHART_COLORS['green']))
+    ):
+    """
+    Create a horizontal bar chart showing the TVPI (Total Value to Paid-In)
+    multiple with colour-coded bands.
+
+    Parameters
+    ----------
+    tvpi : float
+        The TVPI value to display.
+    bands : tuple of tuples, default predefined bands
+        Each tuple defines a band as (lower_bound, upper_bound, colour).
+
+    Returns
+    -------
+    go.Figure
+        A Plotly figure object with the TVPI gauge.
+    """
+    max_axis = math.ceil(tvpi*2)  # Ensure the axis can accommodate the TVPI value
+    traces   = []
+    prev_hi  = 0
+
+    for lo, hi, colour in bands:
+        if tvpi <= lo:
+            break
+        segment_end = min(tvpi, hi)
+        width       = segment_end - max(prev_hi, lo)
+        if width > 0:
+            traces.append(
+                go.Bar(
+                    x=[width], y=["TVPI"],
+                    orientation="h",
+                    marker_color=colour,
+                    base=prev_hi,
+                    hoverinfo="skip", showlegend=False
+                )
+            )
+        prev_hi = hi
+        if segment_end >= tvpi:
+            break
+
+    # grey outline to show full scale
+    traces.append(
+        go.Bar(
+            x=[max_axis], y=["TVPI"],
+            orientation="h",
+            marker_color="rgba(0,0,0,0)",
+            marker_line=dict(color="#888", width=1),
+            base=0,
+            hoverinfo="skip", showlegend=False
+        )
+    )
+
+    fig = go.Figure(traces)
+    fig.update_layout(
+        barmode="stack",
+        bargap=0,                 # no gap = one thick bar
+        height=180,               # increase for extra thickness
+        xaxis=dict(range=[0, max_axis], title="Multiple (×)", fixedrange=True),
+        yaxis_showticklabels=False,
+        margin=dict(l=0, r=0, t=10, b=20)
+    )
+
+    # Optional: hide axis line for a cleaner look
+    fig.update_xaxes(showline=False)
+
+    return fig
