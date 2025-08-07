@@ -34,6 +34,7 @@ from streamlit_autorefresh import st_autorefresh
 load_dotenv(Path(__file__).parent.parent / ".env")
 APP_TITLE = os.getenv("APP_TITLE", "")
 LOGO_FILE= os.getenv("LOGO_FILE", "")
+LOCAL_TZ_str = os.getenv("LOCAL_TZ", "UTC")  # e.g. "Europe/Berlin"
 
 # -----------------------------------------------------------------------------
 # 0) Global page configuration – must run before any Streamlit call
@@ -51,7 +52,7 @@ st.set_page_config(
 # -----------------------------------------------------------------------------
 from app.config import settings
 from app._pages import portfolio, orders, performance, order_details
-from app._pages._helpers import update_page, TS_FMT  # noqa: F401
+from app._pages._helpers import update_page, TS_FMT, convert_to_local_time
 
 # -----------------------------------------------------------------------------
 # 1) Sidebar – navigation radio
@@ -105,4 +106,10 @@ st.sidebar.markdown("---")
 # ────────────────────────────────────────────────────────────────
 utc_now = datetime.now(timezone.utc).strftime(TS_FMT)
 # Put it wherever you like: sidebar, main body, or page footer
-st.sidebar.markdown(f"### 🕒 **UTC:** {utc_now}")
+local_time = convert_to_local_time(datetime.now(timezone.utc), TS_FMT)
+st.sidebar.metric(
+    label="🕒 Last refresh:",
+    value=local_time,
+    delta=LOCAL_TZ_str,
+    delta_color="off",
+)

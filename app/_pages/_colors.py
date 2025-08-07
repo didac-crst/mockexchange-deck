@@ -29,7 +29,10 @@ from datetime import datetime, timezone
 # Third-party
 import pandas as pd
 
-from ._helpers import TS_FMT  # noqa: F401 – used in _row_style
+from ._helpers import (
+                TS_FMT,
+                LOCAL_TZ,
+)
 
 # -----------------------------------------------------------------------------
 # PUBLIC CONSTANTS – status → emoji / colour
@@ -139,74 +142,135 @@ def _row_style(
     *,
     levels: int = 3,
     fresh_window_s: float = 60,
-) -> List[str]:
+) -> list[str]:
     """Return a list of CSS style strings for the given *row*.
 
-    The style (background & text colour) depends on **how recent** the row is:
-    * Rows updated ≤ *fresh_window_s* ago → bucket 0 (no fade).
-    * Each additional *fresh_window_s* pushes the row one bucket darker.
-    * Beyond the last bucket → no styling (use default table colours).
-
-    Parameters
-    ----------
-    row : pd.Series
-        Row from the Styler apply call.
-    levels : int, optional
-        Number of fade buckets (≥ 2). Defaults to 3.
-    fresh_window_s : float, optional
-        Time span (seconds) that defines one bucket.
+    Styles rows based on how recent the update was:
+    - age <= fresh_window_s → bucket 0 (fresh)
+    - age // fresh_window_s → bucket index for fading
+    - negative or out-of-range bucket → default (no style)
     """
-
-    # Build the colour palettes on the fly (cheap for small `levels`).
+    # Build fade palettes
     bg_maps, fg_maps = _create_color_rows_degradation(levels)
 
-    # ------------------------------------------------------------------
-    # Compute row age in seconds from the "Updated" column.
-    # ------------------------------------------------------------------
+    upd = row["Updated"]
+    # 1) Try timestamp or datetime
     try:
-        upd = row["Updated"]
-        t_update = (
-            upd.timestamp() if isinstance(upd, pd.Timestamp) else pd.to_datetime(upd).timestamp()
-        )
-    except ValueError:
-    # 2️⃣ Fallback: handle bare "MM/DD HH:MM:SS"
+        if isinstance(upd, pd.Timestamp):
+            t_update = upd.timestamp()
+        else:
+            # numeric string or number
+            t_val = float(upd)
+            # if ms => large value; unify to seconds
+            if t_val > 1e11:
+                t_val /= 1000.0
+            t_update = t_val
+    except Exception:
+        # 2) Fallback: parse human string in local timezone
         try:
-            # attach current UTC year
-            now_utc = datetime.now(timezone.utc)
-
-            parsed   = datetime.strptime(row["Updated"], TS_FMT).replace(
-                year=now_utc.year, tzinfo=timezone.utc
-            )
-
-            # if we’re in January and the parsed date is in December,
-            # roll it back one year (cross-year edge-case)
-            if now_utc.month == 1 and parsed.month == 12:
+            now = datetime.now(LOCAL_TZ)
+            # Parse string and attach local tz
+            parsed = datetime.strptime(upd, TS_FMT)
+            parsed = parsed.replace(year=now.year, tzinfo=LOCAL_TZ)
+            # Handle year rollover if needed
+            if now.month == 1 and parsed.month == 12:
                 parsed = parsed.replace(year=parsed.year - 1)
-
             t_update = parsed.timestamp()
-
         except Exception:
-            # Column missing or unparsable timestamp – no styling.
             return [""] * len(row)
 
+    # Compute age in seconds, clamp negatives
     age = time.time() - t_update
+    if age < 0:
+        age = 0
 
-    # Bucket index -------------------------------------------------------
+    # Determine bucket
     bucket = int(age // fresh_window_s)
-    if bucket >= len(bg_maps):
-        # Too old → fall back to default styling.
+    if bucket < 0 or bucket >= levels:
         return [""] * len(row)
 
-    # Choose background & foreground colours ----------------------------
-    bg_map = bg_maps[bucket]
-    fg_map = fg_maps[bucket]
-
-    key = str(row["Status"]).lower().replace(" ", "_")  # normalize to status key
-    bg = bg_map.get(key, "")
+    # Lookup colours
+    status_key = str(row["Status"]).lower().replace(" ", "_")
+    bg = bg_maps[bucket].get(status_key)
     if not bg:
-        return [""] * len(row)  # unknown status → default style
-
-    fg = fg_map.get(key, contrast_text_color(bg))
-
+        return [""] * len(row)
+    fg = fg_maps[bucket].get(status_key, contrast_text_color(bg))
     style = f"background-color:{bg};color:{fg}"
-    return [style] * len(row)  # same style for all cells in the row
+    return [style] * len(row)
+
+# def _row_style(
+#     row: pd.Series,
+#     *,
+#     levels: int = 3,
+#     fresh_window_s: float = 60,
+# ) -> List[str]:
+#     """Return a list of CSS style strings for the given *row*.
+
+#     The style (background & text colour) depends on **how recent** the row is:
+#     * Rows updated ≤ *fresh_window_s* ago → bucket 0 (no fade).
+#     * Each additional *fresh_window_s* pushes the row one bucket darker.
+#     * Beyond the last bucket → no styling (use default table colours).
+
+#     Parameters
+#     ----------
+#     row : pd.Series
+#         Row from the Styler apply call.
+#     levels : int, optional
+#         Number of fade buckets (≥ 2). Defaults to 3.
+#     fresh_window_s : float, optional
+#         Time span (seconds) that defines one bucket.
+#     """
+
+#     # Build the colour palettes on the fly (cheap for small `levels`).
+#     bg_maps, fg_maps = _create_color_rows_degradation(levels)
+
+#     # ------------------------------------------------------------------
+#     # Compute row age in seconds from the "Updated" column.
+#     # ------------------------------------------------------------------
+#     try:
+#         upd = row["Updated"]
+#         t_update = (
+#             upd.timestamp() if isinstance(upd, pd.Timestamp) else pd.to_datetime(upd).timestamp()
+#         )
+#     except ValueError:
+#     # 2️⃣ Fallback: handle bare "MM/DD HH:MM:SS"
+#         try:
+#             # attach current UTC year
+#             now_utc = datetime.now(timezone.utc)
+
+#             parsed   = datetime.strptime(row["Updated"], TS_FMT).replace(
+#                 year=now_utc.year, tzinfo=timezone.utc
+#             )
+
+#             # if we’re in January and the parsed date is in December,
+#             # roll it back one year (cross-year edge-case)
+#             if now_utc.month == 1 and parsed.month == 12:
+#                 parsed = parsed.replace(year=parsed.year - 1)
+
+#             t_update = parsed.timestamp()
+
+#         except Exception:
+#             # Column missing or unparsable timestamp – no styling.
+#             return [""] * len(row)
+
+#     age = time.time() - t_update
+
+#     # Bucket index -------------------------------------------------------
+#     bucket = int(age // fresh_window_s)
+#     if bucket >= len(bg_maps):
+#         # Too old → fall back to default styling.
+#         return [""] * len(row)
+
+#     # Choose background & foreground colours ----------------------------
+#     bg_map = bg_maps[bucket]
+#     fg_map = fg_maps[bucket]
+
+#     key = str(row["Status"]).lower().replace(" ", "_")  # normalize to status key
+#     bg = bg_map.get(key, "")
+#     if not bg:
+#         return [""] * len(row)  # unknown status → default style
+
+#     fg = fg_map.get(key, contrast_text_color(bg))
+
+#     style = f"background-color:{bg};color:{fg}"
+#     return [style] * len(row)  # same style for all cells in the row

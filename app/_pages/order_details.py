@@ -28,7 +28,7 @@ import streamlit as st
 from dotenv import load_dotenv
 
 # First‑party ------------------------------------------------------------------
-from ._helpers import _format_significant_float, fmt_side_marker, update_page, _human_ts
+from ._helpers import _format_significant_float, fmt_side_marker, update_page, convert_to_local_time
 from ._colors import _STATUS_LIGHT
 
 # -----------------------------------------------------------------------------
@@ -113,9 +113,9 @@ def render(order_id: str) -> None:  # noqa: D401
     )
 
     # Time‑stamps -------------------------------------------------------
-    placed_ts = _human_ts(data.get("ts_create"))
-    updated_ts = _human_ts(data.get("ts_update"))
-    executed_ts = _human_ts(data.get("ts_finish")) if data.get("ts_finish") else None
+    placed_ts = convert_to_local_time(data.get("ts_create"))
+    updated_ts = convert_to_local_time(data.get("ts_update"))
+    executed_ts = convert_to_local_time(data.get("ts_finish")) if data.get("ts_finish") else None
 
     is_new = _status == "new"
     is_partial = "partially" in _status
@@ -227,7 +227,7 @@ def render(order_id: str) -> None:  # noqa: D401
         records.append(
             {
                 "Step": int(step),
-                "Time": _human_ts(rec.get("ts")),
+                "Time": convert_to_local_time(rec.get("ts")),
                 "Status": rec.get("status").replace("_", " ").capitalize(),
                 "Price": price,
                 "Actual filled": filled,

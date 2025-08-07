@@ -26,13 +26,12 @@ from dotenv import load_dotenv
 
 from app.services.api import get_orders, get_trades_overview, get_overview_capital
 from ._helpers import (
-    _human_ts,
     _add_details_column,
     _display_trades_details,
     _format_significant_float,
     advanced_filter_toggle,
+    convert_to_local_time,
     fmt_side_marker,
-    TS_FMT,
 )
 from ._colors import _row_style
 
@@ -132,8 +131,8 @@ def render() -> None:  # noqa: D401 – imperative mood is clearer here
 
     # `df_copy` will be mutated for visual purposes; keep df_raw pristine.
     df_copy = df_raw.copy()
-    df_copy["Posted"] = df_copy["ts_create"].map(_human_ts)
-    df_copy["Updated"] = df_copy["ts_update"].map(_human_ts)
+    df_copy["Posted"] = df_copy["ts_create"].map(convert_to_local_time)
+    df_copy["Updated"] = df_copy["ts_update"].map(convert_to_local_time)
     # Split "BTC/USDT" → Asset="BTC", quote_asset="USDT"
     df_copy[["Asset", "quote_asset"]] = df_copy["symbol"].str.split("/", expand=True)
 

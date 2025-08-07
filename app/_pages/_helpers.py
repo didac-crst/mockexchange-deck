@@ -16,11 +16,14 @@ Only **docstrings and comments** have been added; no functional changes.
 """
 
 from __future__ import annotations
+from pathlib import Path
 
 # Third-party -----------------------------------------------------------------
-import math, time
+import math, time, os
 from typing import Literal
 from datetime import datetime, timezone
+from dotenv import load_dotenv
+from zoneinfo import ZoneInfo  # Python 3.9+
 import pandas as pd
 import streamlit as st
 import plotly.graph_objects as go
@@ -28,6 +31,7 @@ import plotly.graph_objects as go
 # Project ---------------------------------------------------------------------
 from app.services.api import get_assets_overview
 
+load_dotenv(Path(__file__).parent.parent.parent / ".env")
 # -----------------------------------------------------------------------------
 # 0) Global page configuration – must run before any Streamlit call
 # -----------------------------------------------------------------------------
@@ -81,6 +85,8 @@ def advanced_filter_toggle() -> bool:
 # 1) Formatting helpers
 # -----------------------------------------------------------------------------
 
+LOCAL_TZ_str = os.getenv("LOCAL_TZ", "UTC")  # e.g. "Europe/Berlin"
+LOCAL_TZ = ZoneInfo(LOCAL_TZ_str)   # ← now a tzinfo
 TS_FMT = "%d/%m %H:%M:%S"  # Timestamp format for human-readable dates
 ZERO_DISPLAY = "--"  # Default display for zero values
 _W = "⚠️"  # warning icon – reused inline for brevity
@@ -119,6 +125,40 @@ def _human_ts(ms: int | None) -> str:  # noqa: D401 – keep short description s
         return ""
     dt = datetime.fromtimestamp(ms / 1000, tz=timezone.utc).astimezone()
     return dt.strftime(TS_FMT)
+
+def convert_to_local_time(ts: int | datetime, fmt: str = TS_FMT) -> str:
+    """
+    Convert a UTC timestamp (seconds or ms) or datetime to the user's local time zone.
+    This function handles both integer timestamps (epoch seconds) and
+    datetime objects.
+
+    Parameters
+    ----------
+    ts : int | datetime
+        The UTC datetime to convert.
+    fmt : str
+        The format string to use for formatting the local time.
+
+    Returns
+    -------
+    str
+        The formatted local time.
+    """
+    # 1) If it's numeric, auto-scale ms → s
+    if isinstance(ts, (int, float)):
+        # If it's improbably large for seconds, assume ms
+        if ts > 1e11:
+            ts = ts / 1000.0
+        ts = datetime.fromtimestamp(ts, tz=timezone.utc)
+        # 2) If naive datetime, assume UTC
+    elif isinstance(ts, datetime):
+        if ts.tzinfo is None:
+            ts = ts.replace(tzinfo=timezone.utc)
+    else:
+        return ZERO_DISPLAY
+    
+    # 3) Convert to local tz and format
+    return ts.astimezone(LOCAL_TZ).strftime(fmt)
 
 def _remove_small_zeros(num_str: str) -> str:  # noqa: D401 – short desc fine
     """Strip redundant trailing zeros from a *decimal* string.
