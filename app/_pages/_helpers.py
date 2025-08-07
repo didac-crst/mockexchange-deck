@@ -527,7 +527,7 @@ def _display_performance_details(
 
         if net_investment > 0:
             specs2 = [
-                {"label": "Capital ▶ At Risk (Cost)", "value": net_investment, "unit": cash_asset, "delta_fmt": "raw", "delta_color_rule": "off"},
+                {"label": "Capital ▶ Net Investment", "value": net_investment, "unit": cash_asset, "delta_fmt": "raw", "delta_color_rule": "off"},
                 {"label": "ROI ▶ Gross on Cost", "value": gross_roi_on_cost, "value_type": "percent", "delta_fmt": "raw", "incomplete": incomplete_data, "delta_color_rule": "normal"},
                 {"label": "ROI ▶ Net on Cost", "value": net_roi_on_cost, "value_type": "percent", "delta_fmt": "raw", "incomplete": incomplete_data, "delta_color_rule": "normal"},
             ]
