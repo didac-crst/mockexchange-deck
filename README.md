@@ -67,21 +67,22 @@ sh start_mockexchange.sh            # or: docker compose up -d
 
 ## 🛠️ Configuration
 
-| Variable               | Default                       | Purpose                                                     |
-|------------------------|-------------------------------|-------------------------------------------------------------|
-| `API_URL`              | `http://localhost:8000`       | Base URL of the MockExchange API server                     |
-| `UI_URL`                | `http://mockexchange.your-domain.com` | Base URL used to generate links in the frontend    |
-| `APP_TITLE`             | `MockExchange`                  | Title shown in the Streamlit browser tab and header      |
-| `LOGO_FILE`             | `logo.png`                      | Name of the logo image to display in the sidebar         |
-| `API_KEY`              | `dev-key`                     | Bearer key sent as `x-api-key` header                       |
-| `REFRESH_SECONDS`      | `60`                          | UI auto-refresh interval (seconds)                          |
-| `QUOTE_ASSET`          | `USDT`                        | Fiat or stablecoin used to value the portfolio              |
-| `FRESH_WINDOW_S`       | `60`                          | Time-window (seconds) for “fresh” row highlighting          |
-| `N_VISUAL_DEGRADATIONS`| `60`                          | Number of fade-out levels for row highlighting              |
-| `SLIDER_MIN`           | `25`                          | Minimum “tail” slider value (earliest orders to fetch)      |
-| `SLIDER_MAX`           | `1000`                        | Maximum “tail” slider value                                 |
-| `SLIDER_STEP`          | `25`                          | Step size for the “tail” slider                             |
-| `SLIDER_DEFAULT`       | `100`                         | Default “tail” slider value                                 |
+| Variable                 | Default                       | Purpose                                                     |
+|--------------------------|-------------------------------|-------------------------------------------------------------|
+| `API_URL`                | `http://localhost:8000`       | Base URL of the MockExchange API server                     |
+| `UI_URL`                 | `http://mockexchange.your-domain.com` | Base URL used to generate links in the frontend     |
+| `APP_TITLE`              | `MockExchange`                  | Title shown in the Streamlit browser tab and header       |
+| `LOGO_FILE`              | `logo.png`                      | Name of the logo image to display in the sidebar          |
+| `API_KEY`                | `dev-key`                     | Bearer key sent as `x-api-key` header                       |
+| `REFRESH_SECONDS`        | `60`                          | UI auto-refresh interval (seconds)                          |
+| `QUOTE_ASSET`            | `USDT`                        | Fiat or stablecoin used to value the portfolio              |
+| `FRESH_WINDOW_S`         | `60`                          | Time-window (seconds) for “fresh” row highlighting          |
+| `N_VISUAL_DEGRADATIONS`  | `60`                          | Number of fade-out levels for row highlighting              |
+| `SLIDER_MIN`             | `25`                          | Minimum “tail” slider value (earliest orders to fetch)      |
+| `SLIDER_MAX`             | `1000`                        | Maximum “tail” slider value                                 |
+| `SLIDER_STEP`            | `25`                          | Step size for the “tail” slider                             |
+| `SLIDER_DEFAULT`         | `100`                         | Default “tail” slider value                                 |
+| `LOCAL_TZ`               | `Europe/Berlin`            | Timezone used to localize and display timestamps in local time |
 
 All variables live in **`.env`** (see `.env.example`).  
 They are loaded via *python-dotenv* inside `app/config.py`.
