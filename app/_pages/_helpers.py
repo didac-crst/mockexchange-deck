@@ -85,13 +85,14 @@ TS_FMT = "%d/%m %H:%M:%S"  # Timestamp format for human-readable dates
 ZERO_DISPLAY = "--"  # Default display for zero values
 _W = "⚠️"  # warning icon – reused inline for brevity
 CHART_COLORS = {
-    # Chart colours for performance metrics
-    "blue": "#0f8ce5",  # blue
-    "red": "#f15151",  # red
-    "green": "#07bd10",  # green
-    "orange": "#f1a151",  # orange
-    "yellow": "#fed635",  # yellow
-    "green_light": "#b0f2b0",  # light green
+    "red_dark": "#8B0000",
+    "red": "#C62828",
+    "orange": "#EF6C00",
+    "yellow": "#FFEB3B",
+    "lime": "#B4FF05",
+    "green": "#00DD0B",
+    "blue": "#0EC1FD",
+    "purple": "#9B00FB"
 }
 
 # Local lambdas for consistent formatting ---------------------------
@@ -670,11 +671,14 @@ def _display_trades_details(summary_capital: dict, trades_summary: dict, cash_as
 
 def tvpi_gauge(
     tvpi: float,
-    bands=((0, 0.8,  CHART_COLORS['red']),
+    bands=((0, 0.5,  CHART_COLORS['red_dark']),
+            (0.5, 0.8,  CHART_COLORS['red']),
             (0.8, 1.0, CHART_COLORS['orange']),
-            (1.0, 1.2, CHART_COLORS['yellow']),
-            (1.2, 1.5, CHART_COLORS['green_light']),
-            (1.5, float("inf"), CHART_COLORS['green']))
+            (1.0, 1.25, CHART_COLORS['yellow']),
+            (1.25, 2.0, CHART_COLORS['lime']),
+            (2.0, 5.0, CHART_COLORS['green']),
+            (5.0, 10.0, CHART_COLORS['blue']),
+            (10.0, float("inf"), CHART_COLORS['purple']))
     ):
     """
     Create a horizontal bar chart showing the TVPI (Total Value to Paid-In)
@@ -692,7 +696,16 @@ def tvpi_gauge(
     go.Figure
         A Plotly figure object with the TVPI gauge.
     """
-    max_axis = math.ceil(tvpi*2)  # Ensure the axis can accommodate the TVPI value
+    # Determine the maximum axis value based on the TVPI
+    # This ensures the axis can accommodate the TVPI value.
+    if tvpi <= 1.6:
+        max_axis = 2
+    elif tvpi <= 4:
+        max_axis = 5
+    elif tvpi <= 8:
+        max_axis = 10
+    else:
+        max_axis = math.ceil((tvpi+2)/10)*10  # Ensure the axis can accommodate the TVPI value
     traces   = []
     prev_hi  = 0
 
